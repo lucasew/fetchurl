@@ -123,17 +123,11 @@ func (m *Manager) RunEviction() {
 	slog.Info("Evicting files", "count", len(victims), "current_size", current, "to_free", maxToFree, "target", targetSize)
 
 	for _, victim := range victims {
-		err := m.store.Delete(victim.Key)
-
-		if err != nil {
-			// We can't check os.IsNotExist here easily without importing os.
-			// Ideally Store.Delete should be idempotent.
+		if err := m.store.Delete(victim.Key); err != nil {
 			slog.Error("Failed to remove file", "key", victim.Key, "error", err)
 		}
 
 		m.strategy.Remove(victim.Key)
-
-		// We assume it's gone.
 		m.currentBytes.Add(-victim.Size)
 	}
 }
