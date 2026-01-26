@@ -14,6 +14,10 @@ import (
 	"golang.org/x/sync/singleflight"
 )
 
+// LocalRepository implements a Repository backed by the local filesystem.
+//
+// It uses a directory structure of {cacheDir}/{algo}/{hash} to store files.
+// It integrates with the Eviction Manager to track usage and size.
 type LocalRepository struct {
 	CacheDir string
 	eviction *eviction.Manager
@@ -59,6 +63,16 @@ func (r *LocalRepository) Get(ctx context.Context, algo, hash string) (io.ReadCl
 	return f, info.Size(), nil
 }
 
+// Put stores a file in the local cache if it doesn't already exist.
+//
+// It uses singleflight to ensure that multiple concurrent requests for the same hash
+// only result in a single fetch/store operation.
+//
+// The process ensures data integrity:
+// 1. Fetches content to a temporary file.
+// 2. Computes the hash while writing.
+// 3. Verifies the computed hash matches the requested hash.
+// 4. Atomically moves (renames) the temporary file to the final location.
 func (r *LocalRepository) Put(ctx context.Context, algo, hash string, fetcher Fetcher) error {
 	key := filepath.Join(algo, hash)
 	_, err, _ := r.g.Do(key, func() (interface{}, error) {

@@ -12,7 +12,10 @@ import (
 	"github.com/lucasew/fetchurl/internal/eviction/policy"
 )
 
-// Manager manages cache eviction.
+// Manager manages cache eviction by coordinating between storage usage,
+// configured policies (e.g., max size, min free space), and an eviction strategy (e.g., LRU).
+//
+// It runs a background loop to periodically enforce these policies.
 type Manager struct {
 	cacheDir     string
 	policies     []policy.Policy
@@ -21,7 +24,9 @@ type Manager struct {
 	interval     time.Duration
 }
 
-// NewManager creates a new EvictionManager.
+// NewManager creates a new Manager instance.
+//
+// It does not automatically start the eviction loop; call Start() to begin background processing.
 func NewManager(cacheDir string, policies []policy.Policy, interval time.Duration, strategy Strategy) *Manager {
 	return &Manager{
 		cacheDir: cacheDir,
@@ -31,7 +36,13 @@ func NewManager(cacheDir string, policies []policy.Policy, interval time.Duratio
 	}
 }
 
-// LoadInitialState scans the cache directory and populates the strategy.
+// LoadInitialState scans the cache directory to rebuild the in-memory strategy state.
+//
+// This method walks the entire cache directory to calculate current usage and
+// populate the eviction strategy (e.g., LRU list).
+//
+// Note: This operation can be I/O intensive for large caches and should be called
+// before starting the server or the eviction loop.
 func (m *Manager) LoadInitialState() error {
 	var totalSize int64
 	var count int
@@ -76,6 +87,9 @@ func (m *Manager) LoadInitialState() error {
 }
 
 // Start runs the background eviction loop.
+//
+// It blocks until the context is canceled. It should typically be run in a separate goroutine.
+// The loop triggers RunEviction() at the configured interval.
 func (m *Manager) Start(ctx context.Context) {
 	ticker := time.NewTicker(m.interval)
 	defer ticker.Stop()
@@ -90,18 +104,28 @@ func (m *Manager) Start(ctx context.Context) {
 	}
 }
 
-// Add adds a file to the strategy and updates size.
+// Add registers a new item with the eviction strategy and updates the total cache size.
+//
+// It should be called whenever a new item is successfully committed to the cache.
 func (m *Manager) Add(key string, size int64) {
 	diff := m.strategy.OnAdd(key, size)
 	m.currentBytes.Add(diff)
 }
 
-// Touch updates the access time in the strategy.
+// Touch notifies the strategy that an item has been accessed.
+//
+// For strategies like LRU, this promotes the item to prevent it from being evicted.
 func (m *Manager) Touch(key string) {
 	m.strategy.OnAccess(key)
 }
 
-// RunEviction checks the size and evicts files if needed.
+// RunEviction enforces eviction policies by removing files if thresholds are exceeded.
+//
+// The process is:
+// 1. Check all policies to determine how many bytes need to be freed.
+// 2. If space needs to be freed, query the strategy for victim files.
+// 3. Delete the victim files from disk.
+// 4. Update the strategy and total size to reflect the deletions.
 func (m *Manager) RunEviction() {
 	current := m.currentBytes.Load()
 	var maxToFree int64
