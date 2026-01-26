@@ -60,7 +60,11 @@ func (r *LocalRepository) Walk(fn func(key string, size int64) error) error {
 
 func (r *LocalRepository) Delete(key string) error {
 	path := filepath.Join(r.CacheDir, key)
-	return os.Remove(path)
+	err := os.Remove(path)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	return err
 }
 
 func (r *LocalRepository) getPath(algo, hash string) string {
