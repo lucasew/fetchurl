@@ -12,19 +12,20 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/lucasew/fetchurl/internal/eviction"
 	"golang.org/x/sync/singleflight"
 )
 
 type CASHandler struct {
-	CacheDir  string
-	Upstreams []string
-	g         singleflight.Group
+	CacheDir string
+	g        singleflight.Group
+	eviction *eviction.Manager
 }
 
-func NewCASHandler(cacheDir string, upstreams []string) *CASHandler {
+func NewCASHandler(cacheDir string, eviction *eviction.Manager) *CASHandler {
 	return &CASHandler{
-		CacheDir:  cacheDir,
-		Upstreams: upstreams,
+		CacheDir: cacheDir,
+		eviction: eviction,
 	}
 }
 
@@ -52,7 +53,9 @@ func (h *CASHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Check cache
 	if _, err := os.Stat(cachePath); err == nil {
 		slog.Info("Cache hit", "hash", hash)
-		h.setCacheHeaders(w, hash)
+		if h.eviction != nil {
+			h.eviction.Touch(hash)
+		}
 		http.ServeFile(w, r, cachePath)
 		return
 	}
@@ -149,7 +152,8 @@ func (h *CASHandler) downloadOne(expectedHash string, url string) error {
 	hasher := sha256.New()
 	writer := io.MultiWriter(tmpFile, hasher)
 
-	if _, err := io.Copy(writer, resp.Body); err != nil {
+	written, err := io.Copy(writer, resp.Body)
+	if err != nil {
 		return fmt.Errorf("failed to copy body: %w", err)
 	}
 
@@ -171,6 +175,10 @@ func (h *CASHandler) downloadOne(expectedHash string, url string) error {
 		return fmt.Errorf("failed to rename file: %w", err)
 	}
 	slog.Info("Download complete", "hash", expectedHash, "url", url)
+
+	if h.eviction != nil {
+		h.eviction.Add(expectedHash, written)
+	}
 
 	// Prevent defer os.Remove from deleting the file we just renamed?
 	// os.Rename moves the file, so the old path (tmpFile.Name()) no longer exists.
