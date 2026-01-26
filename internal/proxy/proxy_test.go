@@ -62,10 +62,10 @@ func (m *MockFetcher) Fetch(ctx context.Context, algo, hash string, queryUrls []
 }
 
 func TestRegexRule(t *testing.T) {
-	rule := &RegexRule{
-		Regex: regexp.MustCompile(`sha256/(?P<hash>[a-f0-9]{64})`),
-		Algo:  "sha256",
-	}
+	rule := NewRegexRule(
+		regexp.MustCompile(`sha256/(?P<hash>[a-f0-9]{64})`),
+		"sha256",
+	)
 
 	tests := []struct {
 		url      string
@@ -79,16 +79,18 @@ func TestRegexRule(t *testing.T) {
 
 	for _, tt := range tests {
 		req := httptest.NewRequest("GET", tt.url, nil)
-		algo, hash, match := rule.Match(req)
-		if match != tt.match {
-			t.Errorf("Match(%q) = %v, want %v", tt.url, match, tt.match)
+		res := rule(req.URL)
+
+		matched := res != nil
+		if matched != tt.match {
+			t.Errorf("Match(%q) = %v, want %v", tt.url, matched, tt.match)
 		}
-		if match {
-			if algo != tt.wantAlgo {
-				t.Errorf("Match(%q) algo = %v, want %v", tt.url, algo, tt.wantAlgo)
+		if matched {
+			if res.Algo != tt.wantAlgo {
+				t.Errorf("Match(%q) algo = %v, want %v", tt.url, res.Algo, tt.wantAlgo)
 			}
-			if hash != tt.wantHash {
-				t.Errorf("Match(%q) hash = %v, want %v", tt.url, hash, tt.wantHash)
+			if res.Hash != tt.wantHash {
+				t.Errorf("Match(%q) hash = %v, want %v", tt.url, res.Hash, tt.wantHash)
 			}
 		}
 	}
@@ -96,10 +98,10 @@ func TestRegexRule(t *testing.T) {
 
 func TestProxyServer(t *testing.T) {
 	// Setup Matches
-	rule := &RegexRule{
-		Regex: regexp.MustCompile(`sha256/(?P<hash>[a-f0-9]+)`),
-		Algo:  "sha256",
-	}
+	rule := NewRegexRule(
+		regexp.MustCompile(`sha256/(?P<hash>[a-f0-9]+)`),
+		"sha256",
+	)
 
 	repo := &MockRepo{Data: make(map[string][]byte)}
 	fetcher := &MockFetcher{Content: "fetched-content"}

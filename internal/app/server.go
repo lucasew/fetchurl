@@ -81,10 +81,10 @@ func NewServer(cfg Config) (*http.Server, func(), error) {
 
 	// Setup Proxy Rules
 	// Default rule: matches sha256 hashes in URL path
-	sha256Rule := &proxy.RegexRule{
-		Regex: regexp.MustCompile(`sha256/(?P<hash>[a-f0-9]{64})`),
-		Algo:  "sha256",
-	}
+	sha256Rule := proxy.NewRegexRule(
+		regexp.MustCompile(`sha256/(?P<hash>[a-f0-9]{64})`),
+		"sha256",
+	)
 	rules := []proxy.Rule{sha256Rule}
 
 	// Initialize Proxy Server with fallback Mux

@@ -1,47 +1,47 @@
 package proxy
 
 import (
-	"net/http"
+	"net/url"
 	"regexp"
 )
 
-// Rule defines an interface for matching HTTP requests to CAS content.
-type Rule interface {
-	// Match checks if the request matches the rule.
-	// If it matches, it returns the algorithm, the hash, and true.
-	Match(req *http.Request) (algo, hash string, match bool)
+// RuleResult contains the extraction result from a rule.
+type RuleResult struct {
+	Algo string
+	Hash string
 }
 
-// RegexRule matches requests using a regular expression.
+// Rule defines a function for matching URLs to CAS content.
+// It returns a RuleResult if matched, or nil if not.
+type Rule func(*url.URL) *RuleResult
+
+// NewRegexRule creates a Rule that matches requests using a regular expression.
 // It expects the regex to extract the hash.
-type RegexRule struct {
-	Regex *regexp.Regexp
-	Algo  string
-}
-
-func (r *RegexRule) Match(req *http.Request) (string, string, bool) {
-	url := req.URL.String()
-	matches := r.Regex.FindStringSubmatch(url)
-	if matches == nil {
-		return "", "", false
-	}
-
-	// Try to find a named group "hash"
-	result := make(map[string]string)
-	for i, name := range r.Regex.SubexpNames() {
-		if i != 0 && name != "" {
-			result[name] = matches[i]
+func NewRegexRule(regex *regexp.Regexp, algo string) Rule {
+	return func(u *url.URL) *RuleResult {
+		urlString := u.String()
+		matches := regex.FindStringSubmatch(urlString)
+		if matches == nil {
+			return nil
 		}
-	}
 
-	if h, ok := result["hash"]; ok {
-		return r.Algo, h, true
-	}
+		// Try to find a named group "hash"
+		result := make(map[string]string)
+		for i, name := range regex.SubexpNames() {
+			if i != 0 && name != "" {
+				result[name] = matches[i]
+			}
+		}
 
-	// Fallback: use the first capturing group
-	if len(matches) > 1 {
-		return r.Algo, matches[1], true
-	}
+		if h, ok := result["hash"]; ok {
+			return &RuleResult{Algo: algo, Hash: h}
+		}
 
-	return "", "", false
+		// Fallback: use the first capturing group
+		if len(matches) > 1 {
+			return &RuleResult{Algo: algo, Hash: matches[1]}
+		}
+
+		return nil
+	}
 }

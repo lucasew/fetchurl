@@ -40,8 +40,9 @@ func NewServer(local repository.WritableRepository, fetcher fetcher.Fetcher, rul
 
 func (s *Server) handleRequest(r *http.Request, ctx *goproxy.ProxyCtx) (*http.Request, *http.Response) {
 	for _, rule := range s.Rules {
-		algo, hash, match := rule.Match(r)
-		if match {
+		res := rule(r.URL)
+		if res != nil {
+			algo, hash := res.Algo, res.Hash
 			slog.Info("Proxy rule matched", "url", r.URL.String(), "algo", algo, "hash", hash)
 
 			// 1. Try Local Cache (HIT)
