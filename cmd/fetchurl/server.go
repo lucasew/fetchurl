@@ -120,7 +120,6 @@ func init() {
 
 func mustBindPFlag(key string, flag *pflag.Flag) {
 	if err := viper.BindPFlag(key, flag); err != nil {
-		slog.Error("Failed to bind flag", "key", key, "error", err)
-		os.Exit(1)
+		panic(fmt.Sprintf("failed to bind flag %q: %v", key, err))
 	}
 }
