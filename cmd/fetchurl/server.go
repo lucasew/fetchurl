@@ -17,8 +17,9 @@ var serverCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		port := viper.GetInt("port")
 		cacheDir := viper.GetString("cache-dir")
+		upstreams := viper.GetStringSlice("upstream")
 
-		h := handler.NewCASHandler(cacheDir)
+		h := handler.NewCASHandler(cacheDir, upstreams)
 
 		mux := http.NewServeMux()
 		mux.Handle("/fetch/", h)
@@ -43,7 +44,9 @@ func init() {
 
 	serverCmd.Flags().Int("port", 8080, "Port to run the server on")
 	serverCmd.Flags().String("cache-dir", "./cache", "Directory to store cached files")
+	serverCmd.Flags().StringSlice("upstream", []string{}, "List of upstream fetchurl servers")
 
 	viper.BindPFlag("port", serverCmd.Flags().Lookup("port"))
 	viper.BindPFlag("cache-dir", serverCmd.Flags().Lookup("cache-dir"))
+	viper.BindPFlag("upstream", serverCmd.Flags().Lookup("upstream"))
 }
