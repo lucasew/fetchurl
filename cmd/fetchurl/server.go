@@ -7,6 +7,7 @@ import (
 
 	"github.com/lucasew/fetchurl/internal/app"
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
 )
 
@@ -48,10 +49,16 @@ func init() {
 	serverCmd.Flags().Duration("eviction-interval", time.Minute, "Interval to check for evictions")
 	serverCmd.Flags().String("eviction-strategy", "lru", "Eviction strategy to use (lru)")
 
-	viper.BindPFlag("port", serverCmd.Flags().Lookup("port"))
-	viper.BindPFlag("cache-dir", serverCmd.Flags().Lookup("cache-dir"))
-	viper.BindPFlag("max-cache-size", serverCmd.Flags().Lookup("max-cache-size"))
-	viper.BindPFlag("min-free-space", serverCmd.Flags().Lookup("min-free-space"))
-	viper.BindPFlag("eviction-interval", serverCmd.Flags().Lookup("eviction-interval"))
-	viper.BindPFlag("eviction-strategy", serverCmd.Flags().Lookup("eviction-strategy"))
+	mustBindPFlag("port", serverCmd.Flags().Lookup("port"))
+	mustBindPFlag("cache-dir", serverCmd.Flags().Lookup("cache-dir"))
+	mustBindPFlag("max-cache-size", serverCmd.Flags().Lookup("max-cache-size"))
+	mustBindPFlag("min-free-space", serverCmd.Flags().Lookup("min-free-space"))
+	mustBindPFlag("eviction-interval", serverCmd.Flags().Lookup("eviction-interval"))
+	mustBindPFlag("eviction-strategy", serverCmd.Flags().Lookup("eviction-strategy"))
+}
+
+func mustBindPFlag(key string, flag *pflag.Flag) {
+	if err := viper.BindPFlag(key, flag); err != nil {
+		panic(fmt.Sprintf("failed to bind flag %q: %v", key, err))
+	}
 }
