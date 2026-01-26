@@ -14,7 +14,7 @@ import (
 func TestCASHandler(t *testing.T) {
 	// Setup temporary cache dir
 	cacheDir := t.TempDir()
-	h := NewCASHandler(cacheDir)
+	h := NewCASHandler(cacheDir, nil)
 
 	// Setup mock upstream server
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
