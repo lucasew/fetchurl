@@ -17,9 +17,15 @@ type Server struct {
 	Rules   []Rule
 }
 
-func NewServer(local repository.WritableRepository, fetcher fetcher.Fetcher, rules []Rule) *Server {
+// NewServer creates a new Proxy Server.
+// fallback is the handler to use for non-proxy requests (e.g. local routes).
+func NewServer(local repository.WritableRepository, fetcher fetcher.Fetcher, rules []Rule, fallback http.Handler) *Server {
 	proxy := goproxy.NewProxyHttpServer()
-	proxy.Verbose = true // Useful for debugging, maybe make configurable later
+	proxy.Verbose = true
+
+	if fallback != nil {
+		proxy.NonproxyHandler = fallback
+	}
 
 	s := &Server{
 		Proxy:   proxy,
@@ -82,11 +88,7 @@ func (s *Server) newResponse(r *http.Request, body io.ReadCloser, size int64, al
 	resp.Body = body
 	resp.ContentLength = size
 
-	// Set headers similar to CASHandler
 	resp.Header.Set("Cache-Control", "public, max-age=31536000, immutable")
-	// We don't easily know the canonical CAS URL here, so we skip the Link header for now
-	// unless we want to reconstruct it assuming the CAS server is running on the same host?
-	// Better to leave it out than be wrong.
 
 	return resp
 }

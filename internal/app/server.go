@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"regexp"
 	"time"
 
 	"github.com/lucasew/fetchurl/internal/eviction"
@@ -14,6 +15,7 @@ import (
 	"github.com/lucasew/fetchurl/internal/eviction/policy/minfree"
 	"github.com/lucasew/fetchurl/internal/fetcher"
 	"github.com/lucasew/fetchurl/internal/handler"
+	"github.com/lucasew/fetchurl/internal/proxy"
 	"github.com/lucasew/fetchurl/internal/repository"
 )
 
@@ -71,17 +73,29 @@ func NewServer(cfg Config) (*http.Server, func(), error) {
 	}
 
 	fetchService := fetcher.NewService(upstreamRepos)
-	h := handler.NewCASHandler(localRepo, fetchService)
+	casHandler := handler.NewCASHandler(localRepo, fetchService)
 
-	mux := http.NewServeMux()
-	mux.Handle("/fetch/", h)
+	// Fallback Mux for explicit /fetch/ routes
+	fallbackMux := http.NewServeMux()
+	fallbackMux.Handle("/fetch/", casHandler)
+
+	// Setup Proxy Rules
+	// Default rule: matches sha256 hashes in URL path
+	sha256Rule := &proxy.RegexRule{
+		Regex: regexp.MustCompile(`sha256/(?P<hash>[a-f0-9]{64})`),
+		Algo:  "sha256",
+	}
+	rules := []proxy.Rule{sha256Rule}
+
+	// Initialize Proxy Server with fallback Mux
+	proxyServer := proxy.NewServer(localRepo, fetchService, rules, fallbackMux)
 
 	addr := fmt.Sprintf(":%d", cfg.Port)
-	slog.Info("Starting server", "addr", addr, "cache_dir", cfg.CacheDir)
+	slog.Info("Starting server (Proxy + CAS)", "addr", addr, "cache_dir", cfg.CacheDir)
 
 	server := &http.Server{
 		Addr:    addr,
-		Handler: mux,
+		Handler: proxyServer.Proxy,
 	}
 
 	cleanup := func() {
