@@ -8,6 +8,9 @@ import (
 )
 
 // LRU implements the eviction.Strategy interface using Least Recently Used logic.
+//
+// It maintains a doubly-linked list where the front is the Most Recently Used (MRU) item
+// and the back is the Least Recently Used (LRU) item.
 type LRU struct {
 	mu    sync.Mutex
 	list  *list.List
@@ -34,6 +37,10 @@ func New() *LRU {
 	}
 }
 
+// OnAdd adds a new item or updates an existing one.
+//
+// If the item exists, it is moved to the front (MRU).
+// Returns the difference in size (new size - old size, or just new size if added).
 func (l *LRU) OnAdd(key string, size int64) int64 {
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -54,6 +61,7 @@ func (l *LRU) OnAdd(key string, size int64) int64 {
 	return size
 }
 
+// OnAccess marks an item as recently used by moving it to the front of the list.
 func (l *LRU) OnAccess(key string) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -74,6 +82,10 @@ func (l *LRU) Remove(key string) {
 	}
 }
 
+// GetVictims identifies files to be evicted to reach the target size.
+//
+// It scans from the back of the list (LRU) towards the front.
+// Note: This method does NOT remove the items from the list; the caller must explicitly call Remove().
 func (l *LRU) GetVictims(currentSize int64, targetSize int64) []eviction.Victim {
 	l.mu.Lock()
 	defer l.mu.Unlock()

@@ -8,6 +8,9 @@ import (
 	"strings"
 )
 
+// UpstreamRepository accesses a remote CAS server (another fetchurl instance).
+//
+// It allows for federation and cache tiering by delegating requests to other servers.
 type UpstreamRepository struct {
 	BaseURL string
 	Client  *http.Client
@@ -20,6 +23,7 @@ func NewUpstreamRepository(baseURL string) *UpstreamRepository {
 	}
 }
 
+// Exists checks if the file exists on the upstream server using a HEAD request.
 func (r *UpstreamRepository) Exists(ctx context.Context, algo, hash string) (bool, error) {
 	url := fmt.Sprintf("%s/fetch/%s/%s", r.BaseURL, algo, hash)
 	req, err := http.NewRequestWithContext(ctx, http.MethodHead, url, nil)
