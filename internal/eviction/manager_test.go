@@ -16,7 +16,8 @@ func TestManager(t *testing.T) {
 	interval := 10 * time.Millisecond
 
 	strat := lru.New()
-	mgr := eviction.NewManager(cacheDir, maxBytes, interval, strat)
+	monitor := &eviction.MaxCacheSizeMonitor{MaxBytes: maxBytes}
+	mgr := eviction.NewManager(cacheDir, monitor, interval, strat)
 
 	// Create some dummy files
 	createFile(t, cacheDir, "file1", 20)
