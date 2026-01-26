@@ -112,7 +112,7 @@ func (m *Manager) Add(key string, size int64) {
 	m.currentBytes.Add(diff)
 }
 
-// Touch notifies the strategy that a file has been accessed.
+// Touch notifies the strategy that an item has been accessed.
 //
 // For strategies like LRU, this promotes the item to prevent it from being evicted.
 func (m *Manager) Touch(key string) {
