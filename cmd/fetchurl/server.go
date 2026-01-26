@@ -71,7 +71,7 @@ var serverCmd = &cobra.Command{
 		defer cancel()
 		go mgr.Start(ctx)
 
-		h := handler.NewCASHandler(cacheDir, mgr)
+		h := handler.NewCASHandler(cacheDir, upstreams)
 
 		mux := http.NewServeMux()
 		mux.Handle("/fetch/", h)

@@ -69,11 +69,19 @@ func (h *CASHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Not in cache, attempt download
-	urls := r.URL.Query()["url"]
-	if len(urls) == 0 {
+	queryUrls := r.URL.Query()["url"]
+	if len(queryUrls) == 0 && len(h.Upstreams) == 0 {
 		http.Error(w, "File not found in cache and no URLs provided", http.StatusNotFound)
 		return
 	}
+
+	var urls []string
+	for _, upstream := range h.Upstreams {
+		// remove trailing slash if present to avoid double slash
+		upstream = strings.TrimRight(upstream, "/")
+		urls = append(urls, fmt.Sprintf("%s/fetch/%s", upstream, hash))
+	}
+	urls = append(urls, queryUrls...)
 
 	_, err, _ := h.g.Do(hash, func() (interface{}, error) {
 		// Double check cache inside singleflight
@@ -91,7 +99,13 @@ func (h *CASHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	h.setCacheHeaders(w, hash)
 	http.ServeFile(w, r, cachePath)
+}
+
+func (h *CASHandler) setCacheHeaders(w http.ResponseWriter, hash string) {
+	w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+	w.Header().Set("Link", fmt.Sprintf("</fetch/%s>; rel=\"canonical\"", hash))
 }
 
 func (h *CASHandler) download(expectedHash string, urls []string) error {
