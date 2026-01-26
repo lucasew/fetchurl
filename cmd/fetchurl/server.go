@@ -10,6 +10,9 @@ import (
 
 	"github.com/lucasew/fetchurl/internal/eviction"
 	"github.com/lucasew/fetchurl/internal/eviction/lru"
+	"github.com/lucasew/fetchurl/internal/eviction/policy"
+	"github.com/lucasew/fetchurl/internal/eviction/policy/maxsize"
+	"github.com/lucasew/fetchurl/internal/eviction/policy/minfree"
 	"github.com/lucasew/fetchurl/internal/handler"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -36,22 +39,32 @@ var serverCmd = &cobra.Command{
 			strat = lru.New()
 		}
 
-		// Setup Monitor
-		var monitor eviction.CapacityMonitor
-		if minFreeSpace > 0 {
-			slog.Info("Using MinFreeSpaceMonitor", "min_free", minFreeSpace)
-			monitor = &eviction.MinFreeSpaceMonitor{
-				Path:         cacheDir,
-				MinFreeBytes: minFreeSpace,
-			}
-		} else {
-			slog.Info("Using MaxCacheSizeMonitor", "max_size", maxCacheSize)
-			monitor = &eviction.MaxCacheSizeMonitor{
-				MaxBytes: maxCacheSize,
-			}
+		// Setup Policies
+		var policies []policy.Policy
+
+		if maxCacheSize > 0 {
+			slog.Info("Adding MaxCacheSize policy", "max_size", maxCacheSize)
+			policies = append(policies, &maxsize.Policy{MaxBytes: maxCacheSize})
 		}
 
-		mgr := eviction.NewManager(cacheDir, monitor, evictionInterval, strat)
+		if minFreeSpace > 0 {
+			slog.Info("Adding MinFreeSpace policy", "min_free", minFreeSpace)
+			policies = append(policies, &minfree.Policy{
+				Path:         cacheDir,
+				MinFreeBytes: minFreeSpace,
+			})
+		}
+
+		if len(policies) == 0 {
+			// Default to 1GB max size if nothing configured?
+			// Or should we trust default flag values?
+			// Cobra flags have defaults, so maxCacheSize should be 1GB by default.
+			// However, if user explicitly sets 0 to disable, we might have no policies.
+			// That's fine, it means "unlimited".
+			slog.Info("No eviction policies configured (unlimited cache)")
+		}
+
+		mgr := eviction.NewManager(cacheDir, policies, evictionInterval, strat)
 
 		if err := mgr.LoadInitialState(); err != nil {
 			slog.Warn("Failed to load initial cache state", "error", err)

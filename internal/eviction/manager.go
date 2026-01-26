@@ -8,22 +8,24 @@ import (
 	"path/filepath"
 	"sync/atomic"
 	"time"
+
+	"github.com/lucasew/fetchurl/internal/eviction/policy"
 )
 
 // Manager manages cache eviction.
 type Manager struct {
 	cacheDir     string
-	monitor      CapacityMonitor
+	policies     []policy.Policy
 	strategy     Strategy
 	currentBytes atomic.Int64
 	interval     time.Duration
 }
 
 // NewManager creates a new EvictionManager.
-func NewManager(cacheDir string, monitor CapacityMonitor, interval time.Duration, strategy Strategy) *Manager {
+func NewManager(cacheDir string, policies []policy.Policy, interval time.Duration, strategy Strategy) *Manager {
 	return &Manager{
 		cacheDir: cacheDir,
-		monitor:  monitor,
+		policies: policies,
 		interval: interval,
 		strategy: strategy,
 	}
@@ -88,17 +90,24 @@ func (m *Manager) Touch(key string) {
 // RunEviction checks the size and evicts files if needed.
 func (m *Manager) RunEviction() {
 	current := m.currentBytes.Load()
-	toFree, err := m.monitor.BytesToFree(current)
-	if err != nil {
-		slog.Error("Failed to check capacity", "error", err)
+	var maxToFree int64
+
+	for _, p := range m.policies {
+		toFree, err := p.BytesToFree(current)
+		if err != nil {
+			slog.Error("Failed to check capacity policy", "error", err)
+			continue
+		}
+		if toFree > maxToFree {
+			maxToFree = toFree
+		}
+	}
+
+	if maxToFree <= 0 {
 		return
 	}
 
-	if toFree <= 0 {
-		return
-	}
-
-	targetSize := current - toFree
+	targetSize := current - maxToFree
 	// Ensure target is not negative (though Strategy logic should handle it)
 	if targetSize < 0 {
 		targetSize = 0
@@ -109,7 +118,7 @@ func (m *Manager) RunEviction() {
 		return
 	}
 
-	slog.Info("Evicting files", "count", len(victims), "current_size", current, "to_free", toFree, "target", targetSize)
+	slog.Info("Evicting files", "count", len(victims), "current_size", current, "to_free", maxToFree, "target", targetSize)
 
 	for _, victim := range victims {
 		path := filepath.Join(m.cacheDir, victim.Key)
