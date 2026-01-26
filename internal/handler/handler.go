@@ -1,191 +1,111 @@
 package handler
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
-	"errors"
 	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
-	"os"
-	"path/filepath"
 	"strings"
 
-	"github.com/lucasew/fetchurl/internal/eviction"
-	"golang.org/x/sync/singleflight"
+	"github.com/lucasew/fetchurl/internal/hashutil"
+	"github.com/lucasew/fetchurl/internal/repository"
 )
 
 type CASHandler struct {
-	CacheDir  string
-	g         singleflight.Group
-	eviction  *eviction.Manager
-	Upstreams []string
+	Local     repository.WritableRepository
+	Upstreams []repository.Repository
 }
 
-func NewCASHandler(cacheDir string, eviction *eviction.Manager) *CASHandler {
+func NewCASHandler(local repository.WritableRepository, upstreams []repository.Repository) *CASHandler {
 	return &CASHandler{
-		CacheDir: cacheDir,
-		eviction: eviction,
+		Local:     local,
+		Upstreams: upstreams,
 	}
 }
 
 func (h *CASHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	// Expected path: /fetch/{hash}
-	parts := strings.Split(r.URL.Path, "/")
-	if len(parts) < 3 || parts[1] != "fetch" {
-		http.Error(w, "Invalid path", http.StatusBadRequest)
+	// Expected path: /fetch/{algo}/{hash}
+	parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
+	if len(parts) < 3 || parts[0] != "fetch" {
+		http.Error(w, "Invalid path format. Expected /fetch/{algo}/{hash}", http.StatusBadRequest)
 		return
 	}
+	algo := parts[1]
 	hash := parts[2]
 
-	// Validate hash format (sha256 hex string)
-	if len(hash) != 64 {
-		http.Error(w, "Invalid hash format", http.StatusBadRequest)
-		return
-	}
-	if _, err := hex.DecodeString(hash); err != nil {
-		http.Error(w, "Invalid hash characters", http.StatusBadRequest)
+	if !hashutil.IsSupported(algo) {
+		http.Error(w, fmt.Sprintf("Unsupported hash algorithm: %s", algo), http.StatusBadRequest)
 		return
 	}
 
-	cachePath := filepath.Join(h.CacheDir, hash)
-
-	// Check cache
-	if _, err := os.Stat(cachePath); err == nil {
-		slog.Info("Cache hit", "hash", hash)
-		if h.eviction != nil {
-			h.eviction.Touch(hash)
-		}
-		http.ServeFile(w, r, cachePath)
+	// Try local first
+	reader, size, err := h.Local.Get(r.Context(), algo, hash)
+	if err == nil {
+		defer reader.Close()
+		slog.Debug("Cache hit", "algo", algo, "hash", hash)
+		h.setCacheHeaders(w, algo, hash)
+		w.Header().Set("Content-Length", fmt.Sprintf("%d", size))
+		io.Copy(w, reader)
 		return
 	}
 
-	slog.Info("Cache miss", "hash", hash)
+	slog.Info("Cache miss", "algo", algo, "hash", hash)
 
-	// If method is HEAD and cache miss, return 404
 	if r.Method == http.MethodHead {
-		http.Error(w, "File not found in cache", http.StatusNotFound)
+		http.Error(w, "Not found", http.StatusNotFound)
 		return
 	}
 
-	// Not in cache, attempt download
+	// Not in local, try to Put
 	queryUrls := r.URL.Query()["url"]
-	if len(queryUrls) == 0 && len(h.Upstreams) == 0 {
-		http.Error(w, "File not found in cache and no URLs provided", http.StatusNotFound)
-		return
-	}
 
-	var urls []string
-	for _, upstream := range h.Upstreams {
-		// remove trailing slash if present to avoid double slash
-		upstream = strings.TrimRight(upstream, "/")
-		urls = append(urls, fmt.Sprintf("%s/fetch/%s", upstream, hash))
-	}
-	urls = append(urls, queryUrls...)
-
-	_, err, _ := h.g.Do(hash, func() (interface{}, error) {
-		// Double check cache inside singleflight
-		if _, err := os.Stat(cachePath); err == nil {
-			slog.Info("Cache hit (singleflight)", "hash", hash)
-			return nil, nil
+	fetcher := func() (io.ReadCloser, int64, error) {
+		// Try upstreams first
+		for _, upstream := range h.Upstreams {
+			reader, size, err := upstream.Get(r.Context(), algo, hash)
+			if err == nil {
+				return reader, size, nil
+			}
 		}
 
-		return nil, h.download(hash, urls)
-	})
+		// Try query URLs
+		for _, u := range queryUrls {
+			slog.Info("Downloading from query URL", "url", u, "algo", algo, "hash", hash)
+			resp, err := http.Get(u)
+			if err != nil {
+				continue
+			}
+			if resp.StatusCode != http.StatusOK {
+				resp.Body.Close()
+				continue
+			}
+			return resp.Body, resp.ContentLength, nil
+		}
 
+		return nil, 0, fmt.Errorf("hash not found in upstreams or query URLs")
+	}
+
+	err = h.Local.Put(r.Context(), algo, hash, fetcher)
 	if err != nil {
-		slog.Error("Failed to fetch", "hash", hash, "error", err)
-		http.Error(w, fmt.Sprintf("Failed to fetch: %v", err), http.StatusInternalServerError)
+		slog.Error("Failed to fetch/store", "algo", algo, "hash", hash, "error", err)
+		http.Error(w, fmt.Sprintf("Failed to fetch: %v", err), http.StatusNotFound)
 		return
 	}
 
-	h.setCacheHeaders(w, hash)
-	http.ServeFile(w, r, cachePath)
+	// Serve after Put
+	reader, size, err = h.Local.Get(r.Context(), algo, hash)
+	if err != nil {
+		http.Error(w, "Failed to retrieve after store", http.StatusInternalServerError)
+		return
+	}
+	defer reader.Close()
+
+	h.setCacheHeaders(w, algo, hash)
+	w.Header().Set("Content-Length", fmt.Sprintf("%d", size))
+	io.Copy(w, reader)
 }
 
-func (h *CASHandler) setCacheHeaders(w http.ResponseWriter, hash string) {
+func (h *CASHandler) setCacheHeaders(w http.ResponseWriter, algo, hash string) {
 	w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
-	w.Header().Set("Link", fmt.Sprintf("</fetch/%s>; rel=\"canonical\"", hash))
-}
-
-func (h *CASHandler) download(expectedHash string, urls []string) error {
-	var lastErr error
-
-	for _, u := range urls {
-		err := h.downloadOne(expectedHash, u)
-		if err == nil {
-			return nil
-		}
-		lastErr = err
-	}
-
-	if lastErr != nil {
-		return fmt.Errorf("all sources failed, last error: %w", lastErr)
-	}
-	return errors.New("no sources provided")
-}
-
-func (h *CASHandler) downloadOne(expectedHash string, url string) error {
-	slog.Info("Downloading", "url", url, "hash", expectedHash)
-	resp, err := http.Get(url)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("status code %d from %s", resp.StatusCode, url)
-	}
-
-	// Create temp file
-	if err := os.MkdirAll(h.CacheDir, 0755); err != nil {
-		return fmt.Errorf("failed to create cache dir: %w", err)
-	}
-
-	tmpFile, err := os.CreateTemp(h.CacheDir, "download-*")
-	if err != nil {
-		return fmt.Errorf("failed to create temp file: %w", err)
-	}
-	defer os.Remove(tmpFile.Name()) // Clean up on error/return (if not renamed)
-	defer tmpFile.Close()
-
-	hasher := sha256.New()
-	writer := io.MultiWriter(tmpFile, hasher)
-
-	written, err := io.Copy(writer, resp.Body)
-	if err != nil {
-		return fmt.Errorf("failed to copy body: %w", err)
-	}
-
-	// Verify hash
-	downloadedHash := hex.EncodeToString(hasher.Sum(nil))
-	if downloadedHash != expectedHash {
-		slog.Warn("Hash mismatch", "expected", expectedHash, "got", downloadedHash, "url", url)
-		return fmt.Errorf("hash mismatch: expected %s, got %s", expectedHash, downloadedHash)
-	}
-
-	// Close file before rename
-	if err := tmpFile.Close(); err != nil {
-		return fmt.Errorf("failed to close temp file: %w", err)
-	}
-
-	// Atomic rename
-	finalPath := filepath.Join(h.CacheDir, expectedHash)
-	if err := os.Rename(tmpFile.Name(), finalPath); err != nil {
-		return fmt.Errorf("failed to rename file: %w", err)
-	}
-	slog.Info("Download complete", "hash", expectedHash, "url", url)
-
-	if h.eviction != nil {
-		h.eviction.Add(expectedHash, written)
-	}
-
-	// Prevent defer os.Remove from deleting the file we just renamed?
-	// os.Rename moves the file, so the old path (tmpFile.Name()) no longer exists.
-	// os.Remove on a non-existent file returns an error, but defer ignores it usually.
-	// But to be clean, we rely on the fact that if Rename succeeds, the temp file is gone.
-	// os.Remove will return an error (PathError) which is fine to ignore in defer.
-
-	return nil
+	w.Header().Set("Link", fmt.Sprintf("</fetch/%s/%s>; rel=\"canonical\"", algo, hash))
 }

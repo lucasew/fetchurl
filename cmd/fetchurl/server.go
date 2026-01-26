@@ -14,6 +14,7 @@ import (
 	"github.com/lucasew/fetchurl/internal/eviction/policy/maxsize"
 	"github.com/lucasew/fetchurl/internal/eviction/policy/minfree"
 	"github.com/lucasew/fetchurl/internal/handler"
+	"github.com/lucasew/fetchurl/internal/repository"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -28,6 +29,7 @@ var serverCmd = &cobra.Command{
 		minFreeSpace := viper.GetInt64("min-free-space")
 		evictionInterval := viper.GetDuration("eviction-interval")
 		evictionStrategy := viper.GetString("eviction-strategy")
+		upstreams := viper.GetStringSlice("upstream")
 
 		// Setup Eviction Manager
 		strat, err := eviction.GetStrategy(evictionStrategy)
@@ -71,7 +73,13 @@ var serverCmd = &cobra.Command{
 		defer cancel()
 		go mgr.Start(ctx)
 
-		h := handler.NewCASHandler(cacheDir, upstreams)
+		localRepo := repository.NewLocalRepository(cacheDir, mgr)
+		var upstreamRepos []repository.Repository
+		for _, u := range upstreams {
+			upstreamRepos = append(upstreamRepos, repository.NewUpstreamRepository(u))
+		}
+
+		h := handler.NewCASHandler(localRepo, upstreamRepos)
 
 		mux := http.NewServeMux()
 		mux.Handle("/fetch/", h)

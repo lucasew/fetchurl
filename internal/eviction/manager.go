@@ -33,31 +33,45 @@ func NewManager(cacheDir string, policies []policy.Policy, interval time.Duratio
 
 // LoadInitialState scans the cache directory and populates the strategy.
 func (m *Manager) LoadInitialState() error {
-	entries, err := os.ReadDir(m.cacheDir)
-	if err != nil {
-		if os.IsNotExist(err) {
+	var totalSize int64
+	var count int
+
+	err := filepath.WalkDir(m.cacheDir, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			if os.IsNotExist(err) && path == m.cacheDir {
+				return nil
+			}
+			return err
+		}
+		if d.IsDir() {
 			return nil
 		}
-		return fmt.Errorf("failed to read cache dir: %w", err)
-	}
 
-	var totalSize int64
-	for _, entry := range entries {
-		if entry.IsDir() {
-			continue
-		}
-		info, err := entry.Info()
+		info, err := d.Info()
 		if err != nil {
-			slog.Warn("Failed to get file info", "file", entry.Name(), "error", err)
-			continue
+			slog.Warn("Failed to get file info", "file", path, "error", err)
+			return nil
 		}
+
+		rel, err := filepath.Rel(m.cacheDir, path)
+		if err != nil {
+			slog.Warn("Failed to get relative path", "path", path, "error", err)
+			return nil
+		}
+
 		size := info.Size()
 		totalSize += size
-		m.strategy.OnAdd(entry.Name(), size)
+		count++
+		m.strategy.OnAdd(rel, size)
+		return nil
+	})
+
+	if err != nil {
+		return fmt.Errorf("failed to walk cache dir: %w", err)
 	}
 
 	m.currentBytes.Store(totalSize)
-	slog.Info("Initial cache state loaded", "count", len(entries), "size", totalSize)
+	slog.Info("Initial cache state loaded", "count", count, "size", totalSize)
 	return nil
 }
 

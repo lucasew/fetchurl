@@ -1,0 +1,52 @@
+package repository
+
+import (
+	"context"
+	"fmt"
+	"io"
+	"net/http"
+	"strings"
+)
+
+type UpstreamRepository struct {
+	BaseURL string
+	Client  *http.Client
+}
+
+func NewUpstreamRepository(baseURL string) *UpstreamRepository {
+	return &UpstreamRepository{
+		BaseURL: strings.TrimRight(baseURL, "/"),
+		Client:  http.DefaultClient,
+	}
+}
+
+func (r *UpstreamRepository) Exists(ctx context.Context, algo, hash string) (bool, error) {
+	url := fmt.Sprintf("%s/fetch/%s/%s", r.BaseURL, algo, hash)
+	req, err := http.NewRequestWithContext(ctx, http.MethodHead, url, nil)
+	if err != nil {
+		return false, err
+	}
+	resp, err := r.Client.Do(req)
+	if err != nil {
+		return false, err
+	}
+	defer resp.Body.Close()
+	return resp.StatusCode == http.StatusOK, nil
+}
+
+func (r *UpstreamRepository) Get(ctx context.Context, algo, hash string) (io.ReadCloser, int64, error) {
+	url := fmt.Sprintf("%s/fetch/%s/%s", r.BaseURL, algo, hash)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, 0, err
+	}
+	resp, err := r.Client.Do(req)
+	if err != nil {
+		return nil, 0, err
+	}
+	if resp.StatusCode != http.StatusOK {
+		resp.Body.Close()
+		return nil, 0, fmt.Errorf("upstream returned status %d", resp.StatusCode)
+	}
+	return resp.Body, resp.ContentLength, nil
+}
