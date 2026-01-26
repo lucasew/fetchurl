@@ -7,19 +7,20 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/lucasew/fetchurl/internal/fetcher"
 	"github.com/lucasew/fetchurl/internal/hashutil"
 	"github.com/lucasew/fetchurl/internal/repository"
 )
 
 type CASHandler struct {
-	Local     repository.WritableRepository
-	Upstreams []repository.Repository
+	Local   repository.WritableRepository
+	Fetcher fetcher.Fetcher
 }
 
-func NewCASHandler(local repository.WritableRepository, upstreams []repository.Repository) *CASHandler {
+func NewCASHandler(local repository.WritableRepository, fetcher fetcher.Fetcher) *CASHandler {
 	return &CASHandler{
-		Local:     local,
-		Upstreams: upstreams,
+		Local:   local,
+		Fetcher: fetcher,
 	}
 }
 
@@ -59,33 +60,11 @@ func (h *CASHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Not in local, try to Put
 	queryUrls := r.URL.Query()["url"]
 
-	fetcher := func() (io.ReadCloser, int64, error) {
-		// Try upstreams first
-		for _, upstream := range h.Upstreams {
-			reader, size, err := upstream.Get(r.Context(), algo, hash)
-			if err == nil {
-				return reader, size, nil
-			}
-		}
-
-		// Try query URLs
-		for _, u := range queryUrls {
-			slog.Info("Downloading from query URL", "url", u, "algo", algo, "hash", hash)
-			resp, err := http.Get(u)
-			if err != nil {
-				continue
-			}
-			if resp.StatusCode != http.StatusOK {
-				resp.Body.Close()
-				continue
-			}
-			return resp.Body, resp.ContentLength, nil
-		}
-
-		return nil, 0, fmt.Errorf("hash not found in upstreams or query URLs")
+	fetchFn := func() (io.ReadCloser, int64, error) {
+		return h.Fetcher.Fetch(r.Context(), algo, hash, queryUrls)
 	}
 
-	err = h.Local.Put(r.Context(), algo, hash, fetcher)
+	err = h.Local.Put(r.Context(), algo, hash, fetchFn)
 	if err != nil {
 		slog.Error("Failed to fetch/store", "algo", algo, "hash", hash, "error", err)
 		http.Error(w, fmt.Sprintf("Failed to fetch: %v", err), http.StatusNotFound)
