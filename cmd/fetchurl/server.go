@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/lucasew/fetchurl/internal/eviction"
-	"github.com/lucasew/fetchurl/internal/eviction/lru"
+	_ "github.com/lucasew/fetchurl/internal/eviction/lru"
 	"github.com/lucasew/fetchurl/internal/eviction/policy"
 	"github.com/lucasew/fetchurl/internal/eviction/policy/maxsize"
 	"github.com/lucasew/fetchurl/internal/eviction/policy/minfree"
@@ -30,13 +30,10 @@ var serverCmd = &cobra.Command{
 		evictionStrategy := viper.GetString("eviction-strategy")
 
 		// Setup Eviction Manager
-		var strat eviction.Strategy
-		switch evictionStrategy {
-		case "lru":
-			strat = lru.New()
-		default:
-			slog.Warn("Unknown eviction strategy, defaulting to LRU", "strategy", evictionStrategy)
-			strat = lru.New()
+		strat, err := eviction.GetStrategy(evictionStrategy)
+		if err != nil {
+			slog.Error("Failed to initialize eviction strategy", "error", err)
+			os.Exit(1)
 		}
 
 		// Setup Policies

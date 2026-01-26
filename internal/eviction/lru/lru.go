@@ -20,6 +20,12 @@ type entry struct {
 	size int64
 }
 
+func init() {
+	eviction.Register("lru", func() eviction.Strategy {
+		return New()
+	})
+}
+
 func New() *LRU {
 	return &LRU{
 		list:  list.New(),
