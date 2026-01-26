@@ -107,6 +107,39 @@ func TestCASHandler(t *testing.T) {
 			t.Errorf("file not found in cache")
 		}
 	})
+
+	t.Run("HEAD Cache Miss", func(t *testing.T) {
+		// New random hash, not in cache
+		hash3 := sha256Sum([]byte("content3"))
+		req := httptest.NewRequest("HEAD", fmt.Sprintf("/fetch/%s?url=%s/file1", hash3, upstream.URL), nil)
+		w := httptest.NewRecorder()
+
+		h.ServeHTTP(w, req)
+
+		if w.Code != http.StatusNotFound {
+			t.Errorf("expected status 404, got %d", w.Code)
+		}
+		// Should NOT download
+		if _, err := os.Stat(filepath.Join(cacheDir, hash3)); !os.IsNotExist(err) {
+			t.Errorf("file should not exist in cache")
+		}
+	})
+
+	t.Run("HEAD Cache Hit", func(t *testing.T) {
+		// hash1 is already in cache
+		req := httptest.NewRequest("HEAD", fmt.Sprintf("/fetch/%s", hash1), nil)
+		w := httptest.NewRecorder()
+
+		h.ServeHTTP(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Errorf("expected status 200, got %d", w.Code)
+		}
+		// Content-Length should be set by ServeFile
+		if w.Header().Get("Content-Length") == "" {
+			t.Errorf("expected Content-Length header")
+		}
+	})
 }
 
 func sha256Sum(b []byte) string {

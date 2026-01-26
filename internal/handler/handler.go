@@ -52,6 +52,12 @@ func (h *CASHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// If method is HEAD and cache miss, return 404
+	if r.Method == http.MethodHead {
+		http.Error(w, "File not found in cache", http.StatusNotFound)
+		return
+	}
+
 	// Not in cache, attempt download
 	urls := r.URL.Query()["url"]
 	if len(urls) == 0 {
