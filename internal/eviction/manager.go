@@ -104,9 +104,9 @@ func (m *Manager) Start(ctx context.Context) {
 	}
 }
 
-// Add registers a new file with the eviction strategy and updates the total cache size.
+// Add registers a new item with the eviction strategy and updates the total cache size.
 //
-// It should be called whenever a new file is successfully committed to the cache.
+// It should be called whenever a new item is successfully committed to the cache.
 func (m *Manager) Add(key string, size int64) {
 	diff := m.strategy.OnAdd(key, size)
 	m.currentBytes.Add(diff)
