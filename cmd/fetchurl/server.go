@@ -1,9 +1,10 @@
-package cmd
+package main
 
 import (
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
+	"os"
 
 	"github.com/lucasew/fetchurl/internal/handler"
 	"github.com/spf13/cobra"
@@ -23,7 +24,7 @@ var serverCmd = &cobra.Command{
 		mux.Handle("/fetch/", h)
 
 		addr := fmt.Sprintf(":%d", port)
-		log.Printf("Starting server on %s with cache dir %s", addr, cacheDir)
+		slog.Info("Starting server", "addr", addr, "cache_dir", cacheDir)
 
 		server := &http.Server{
 			Addr:    addr,
@@ -31,7 +32,8 @@ var serverCmd = &cobra.Command{
 		}
 
 		if err := server.ListenAndServe(); err != nil {
-			log.Fatalf("Server failed: %v", err)
+			slog.Error("Server failed", "error", err)
+			os.Exit(1)
 		}
 	},
 }

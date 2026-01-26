@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -48,9 +49,12 @@ func (h *CASHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// Check cache
 	if _, err := os.Stat(cachePath); err == nil {
+		slog.Info("Cache hit", "hash", hash)
 		http.ServeFile(w, r, cachePath)
 		return
 	}
+
+	slog.Info("Cache miss", "hash", hash)
 
 	// If method is HEAD and cache miss, return 404
 	if r.Method == http.MethodHead {
@@ -68,6 +72,7 @@ func (h *CASHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	_, err, _ := h.g.Do(hash, func() (interface{}, error) {
 		// Double check cache inside singleflight
 		if _, err := os.Stat(cachePath); err == nil {
+			slog.Info("Cache hit (singleflight)", "hash", hash)
 			return nil, nil
 		}
 
@@ -75,6 +80,7 @@ func (h *CASHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	})
 
 	if err != nil {
+		slog.Error("Failed to fetch", "hash", hash, "error", err)
 		http.Error(w, fmt.Sprintf("Failed to fetch: %v", err), http.StatusInternalServerError)
 		return
 	}
@@ -100,6 +106,7 @@ func (h *CASHandler) download(expectedHash string, urls []string) error {
 }
 
 func (h *CASHandler) downloadOne(expectedHash string, url string) error {
+	slog.Info("Downloading", "url", url, "hash", expectedHash)
 	resp, err := http.Get(url)
 	if err != nil {
 		return err
@@ -132,6 +139,7 @@ func (h *CASHandler) downloadOne(expectedHash string, url string) error {
 	// Verify hash
 	downloadedHash := hex.EncodeToString(hasher.Sum(nil))
 	if downloadedHash != expectedHash {
+		slog.Warn("Hash mismatch", "expected", expectedHash, "got", downloadedHash, "url", url)
 		return fmt.Errorf("hash mismatch: expected %s, got %s", expectedHash, downloadedHash)
 	}
 
@@ -145,6 +153,7 @@ func (h *CASHandler) downloadOne(expectedHash string, url string) error {
 	if err := os.Rename(tmpFile.Name(), finalPath); err != nil {
 		return fmt.Errorf("failed to rename file: %w", err)
 	}
+	slog.Info("Download complete", "hash", expectedHash, "url", url)
 
 	// Prevent defer os.Remove from deleting the file we just renamed?
 	// os.Rename moves the file, so the old path (tmpFile.Name()) no longer exists.
