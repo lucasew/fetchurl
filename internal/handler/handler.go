@@ -17,9 +17,10 @@ import (
 )
 
 type CASHandler struct {
-	CacheDir string
-	g        singleflight.Group
-	eviction *eviction.Manager
+	CacheDir  string
+	g         singleflight.Group
+	eviction  *eviction.Manager
+	Upstreams []string
 }
 
 func NewCASHandler(cacheDir string, eviction *eviction.Manager) *CASHandler {
