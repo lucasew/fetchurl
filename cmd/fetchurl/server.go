@@ -1,20 +1,11 @@
 package main
 
 import (
-	"context"
-	"fmt"
 	"log/slog"
-	"net/http"
 	"os"
 	"time"
 
-	"github.com/lucasew/fetchurl/internal/eviction"
-	_ "github.com/lucasew/fetchurl/internal/eviction/lru"
-	"github.com/lucasew/fetchurl/internal/eviction/policy"
-	"github.com/lucasew/fetchurl/internal/eviction/policy/maxsize"
-	"github.com/lucasew/fetchurl/internal/eviction/policy/minfree"
-	"github.com/lucasew/fetchurl/internal/handler"
-	"github.com/lucasew/fetchurl/internal/repository"
+	"github.com/lucasew/fetchurl/internal/app"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -23,74 +14,22 @@ var serverCmd = &cobra.Command{
 	Use:   "server",
 	Short: "Starts the HTTP server",
 	Run: func(cmd *cobra.Command, args []string) {
-		port := viper.GetInt("port")
-		cacheDir := viper.GetString("cache-dir")
-		maxCacheSize := viper.GetInt64("max-cache-size")
-		minFreeSpace := viper.GetInt64("min-free-space")
-		evictionInterval := viper.GetDuration("eviction-interval")
-		evictionStrategy := viper.GetString("eviction-strategy")
-		upstreams := viper.GetStringSlice("upstream")
+		cfg := app.Config{
+			Port:             viper.GetInt("port"),
+			CacheDir:         viper.GetString("cache-dir"),
+			MaxCacheSize:     viper.GetInt64("max-cache-size"),
+			MinFreeSpace:     viper.GetInt64("min-free-space"),
+			EvictionInterval: viper.GetDuration("eviction-interval"),
+			EvictionStrategy: viper.GetString("eviction-strategy"),
+			Upstreams:        viper.GetStringSlice("upstream"),
+		}
 
-		// Setup Eviction Manager
-		strat, err := eviction.GetStrategy(evictionStrategy)
+		server, cleanup, err := app.NewServer(cfg)
 		if err != nil {
-			slog.Error("Failed to initialize eviction strategy", "error", err)
+			slog.Error("Failed to initialize server", "error", err)
 			os.Exit(1)
 		}
-
-		// Setup Policies
-		var policies []policy.Policy
-
-		if maxCacheSize > 0 {
-			slog.Info("Adding MaxCacheSize policy", "max_size", maxCacheSize)
-			policies = append(policies, &maxsize.Policy{MaxBytes: maxCacheSize})
-		}
-
-		if minFreeSpace > 0 {
-			slog.Info("Adding MinFreeSpace policy", "min_free", minFreeSpace)
-			policies = append(policies, &minfree.Policy{
-				Path:         cacheDir,
-				MinFreeBytes: minFreeSpace,
-			})
-		}
-
-		if len(policies) == 0 {
-			// Default to 1GB max size if nothing configured?
-			// Or should we trust default flag values?
-			// Cobra flags have defaults, so maxCacheSize should be 1GB by default.
-			// However, if user explicitly sets 0 to disable, we might have no policies.
-			// That's fine, it means "unlimited".
-			slog.Info("No eviction policies configured (unlimited cache)")
-		}
-
-		mgr := eviction.NewManager(cacheDir, policies, evictionInterval, strat)
-
-		if err := mgr.LoadInitialState(); err != nil {
-			slog.Warn("Failed to load initial cache state", "error", err)
-		}
-
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
-		go mgr.Start(ctx)
-
-		localRepo := repository.NewLocalRepository(cacheDir, mgr)
-		var upstreamRepos []repository.Repository
-		for _, u := range upstreams {
-			upstreamRepos = append(upstreamRepos, repository.NewUpstreamRepository(u))
-		}
-
-		h := handler.NewCASHandler(localRepo, upstreamRepos)
-
-		mux := http.NewServeMux()
-		mux.Handle("/fetch/", h)
-
-		addr := fmt.Sprintf(":%d", port)
-		slog.Info("Starting server", "addr", addr, "cache_dir", cacheDir)
-
-		server := &http.Server{
-			Addr:    addr,
-			Handler: mux,
-		}
+		defer cleanup()
 
 		if err := server.ListenAndServe(); err != nil {
 			slog.Error("Server failed", "error", err)

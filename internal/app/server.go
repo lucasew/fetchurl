@@ -1,0 +1,92 @@
+package app
+
+import (
+	"context"
+	"fmt"
+	"log/slog"
+	"net/http"
+	"time"
+
+	"github.com/lucasew/fetchurl/internal/eviction"
+	_ "github.com/lucasew/fetchurl/internal/eviction/lru"
+	"github.com/lucasew/fetchurl/internal/eviction/policy"
+	"github.com/lucasew/fetchurl/internal/eviction/policy/maxsize"
+	"github.com/lucasew/fetchurl/internal/eviction/policy/minfree"
+	"github.com/lucasew/fetchurl/internal/fetcher"
+	"github.com/lucasew/fetchurl/internal/handler"
+	"github.com/lucasew/fetchurl/internal/repository"
+)
+
+type Config struct {
+	Port             int
+	CacheDir         string
+	MaxCacheSize     int64
+	MinFreeSpace     int64
+	EvictionInterval time.Duration
+	EvictionStrategy string
+	Upstreams        []string
+}
+
+func NewServer(cfg Config) (*http.Server, func(), error) {
+	// Setup Eviction Manager
+	strat, err := eviction.GetStrategy(cfg.EvictionStrategy)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to initialize eviction strategy: %w", err)
+	}
+
+	// Setup Policies
+	var policies []policy.Policy
+
+	if cfg.MaxCacheSize > 0 {
+		slog.Info("Adding MaxCacheSize policy", "max_size", cfg.MaxCacheSize)
+		policies = append(policies, &maxsize.Policy{MaxBytes: cfg.MaxCacheSize})
+	}
+
+	if cfg.MinFreeSpace > 0 {
+		slog.Info("Adding MinFreeSpace policy", "min_free", cfg.MinFreeSpace)
+		policies = append(policies, &minfree.Policy{
+			Path:         cfg.CacheDir,
+			MinFreeBytes: cfg.MinFreeSpace,
+		})
+	}
+
+	if len(policies) == 0 {
+		slog.Info("No eviction policies configured (unlimited cache)")
+	}
+
+	mgr := eviction.NewManager(cfg.CacheDir, policies, cfg.EvictionInterval, strat)
+
+	if err := mgr.LoadInitialState(); err != nil {
+		slog.Warn("Failed to load initial cache state", "error", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	// Start eviction manager
+	go mgr.Start(ctx)
+
+	localRepo := repository.NewLocalRepository(cfg.CacheDir, mgr)
+	var upstreamRepos []repository.Repository
+	for _, u := range cfg.Upstreams {
+		upstreamRepos = append(upstreamRepos, repository.NewUpstreamRepository(u))
+	}
+
+	fetchService := fetcher.NewService(upstreamRepos)
+	h := handler.NewCASHandler(localRepo, fetchService)
+
+	mux := http.NewServeMux()
+	mux.Handle("/fetch/", h)
+
+	addr := fmt.Sprintf(":%d", cfg.Port)
+	slog.Info("Starting server", "addr", addr, "cache_dir", cfg.CacheDir)
+
+	server := &http.Server{
+		Addr:    addr,
+		Handler: mux,
+	}
+
+	cleanup := func() {
+		cancel()
+	}
+
+	return server, cleanup, nil
+}
