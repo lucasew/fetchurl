@@ -37,9 +37,10 @@ func (s *Service) Fetch(ctx context.Context, algo, hash string, queryUrls []stri
 	for _, u := range queryUrls {
 		slog.Info("Downloading from query URL", "url", u, "algo", algo, "hash", hash)
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
-		if err != nil {
-			continue
-		}
+if err != nil {
+	slog.Warn("Failed to create request for query URL", "url", u, "error", err)
+	continue
+}
 
 		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
