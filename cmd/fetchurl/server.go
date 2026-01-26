@@ -63,7 +63,10 @@ var serverCmd = &cobra.Command{
 			slog.Info("No eviction policies configured (unlimited cache)")
 		}
 
-		mgr := eviction.NewManager(cacheDir, policies, evictionInterval, strat)
+		mgr := eviction.NewManager(policies, evictionInterval, strat)
+
+		localRepo := repository.NewLocalRepository(cacheDir, mgr)
+		mgr.SetStore(localRepo)
 
 		if err := mgr.LoadInitialState(); err != nil {
 			slog.Warn("Failed to load initial cache state", "error", err)
@@ -72,8 +75,6 @@ var serverCmd = &cobra.Command{
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 		go mgr.Start(ctx)
-
-		localRepo := repository.NewLocalRepository(cacheDir, mgr)
 		var upstreamRepos []repository.Repository
 		for _, u := range upstreams {
 			upstreamRepos = append(upstreamRepos, repository.NewUpstreamRepository(u))

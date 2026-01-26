@@ -28,3 +28,11 @@ type Strategy interface {
 	// Remove removes a key from the strategy (e.g. if it was deleted externally).
 	Remove(key string)
 }
+
+// Store defines the interface for the underlying storage that the eviction manager controls.
+type Store interface {
+	// Walk iterates over all items in the store, calling the provided function for each.
+	Walk(fn func(key string, size int64) error) error
+	// Delete removes the item with the given key from the store.
+	Delete(key string) error
+}

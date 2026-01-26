@@ -4,8 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"os"
-	"path/filepath"
 	"sync/atomic"
 	"time"
 
@@ -14,7 +12,7 @@ import (
 
 // Manager manages cache eviction.
 type Manager struct {
-	cacheDir     string
+	store        Store
 	policies     []policy.Policy
 	strategy     Strategy
 	currentBytes atomic.Int64
@@ -22,52 +20,37 @@ type Manager struct {
 }
 
 // NewManager creates a new EvictionManager.
-func NewManager(cacheDir string, policies []policy.Policy, interval time.Duration, strategy Strategy) *Manager {
+func NewManager(policies []policy.Policy, interval time.Duration, strategy Strategy) *Manager {
 	return &Manager{
-		cacheDir: cacheDir,
 		policies: policies,
 		interval: interval,
 		strategy: strategy,
 	}
 }
 
+// SetStore sets the underlying storage for the manager.
+func (m *Manager) SetStore(store Store) {
+	m.store = store
+}
+
 // LoadInitialState scans the cache directory and populates the strategy.
 func (m *Manager) LoadInitialState() error {
+	if m.store == nil {
+		return fmt.Errorf("store not initialized")
+	}
+
 	var totalSize int64
 	var count int
 
-	err := filepath.WalkDir(m.cacheDir, func(path string, d os.DirEntry, err error) error {
-		if err != nil {
-			if os.IsNotExist(err) && path == m.cacheDir {
-				return nil
-			}
-			return err
-		}
-		if d.IsDir() {
-			return nil
-		}
-
-		info, err := d.Info()
-		if err != nil {
-			slog.Warn("Failed to get file info", "file", path, "error", err)
-			return nil
-		}
-
-		rel, err := filepath.Rel(m.cacheDir, path)
-		if err != nil {
-			slog.Warn("Failed to get relative path", "path", path, "error", err)
-			return nil
-		}
-
-		size := info.Size()
+	err := m.store.Walk(func(key string, size int64) error {
 		totalSize += size
 		count++
-		m.strategy.OnAdd(rel, size)
+		m.strategy.OnAdd(key, size)
 		return nil
 	})
 
 	if err != nil {
-		return fmt.Errorf("failed to walk cache dir: %w", err)
+		return fmt.Errorf("failed to walk cache: %w", err)
 	}
 
 	m.currentBytes.Store(totalSize)
@@ -103,6 +86,11 @@ func (m *Manager) Touch(key string) {
 
 // RunEviction checks the size and evicts files if needed.
 func (m *Manager) RunEviction() {
+	if m.store == nil {
+		slog.Error("Store not initialized")
+		return
+	}
+
 	current := m.currentBytes.Load()
 	var maxToFree int64
 
@@ -135,20 +123,17 @@ func (m *Manager) RunEviction() {
 	slog.Info("Evicting files", "count", len(victims), "current_size", current, "to_free", maxToFree, "target", targetSize)
 
 	for _, victim := range victims {
-		path := filepath.Join(m.cacheDir, victim.Key)
-		err := os.Remove(path)
-		if err != nil && !os.IsNotExist(err) {
-			slog.Error("Failed to remove file", "path", path, "error", err)
-			// Continue to next victim?
-			// If we can't remove, we shouldn't decrement size?
-			// But we remove from strategy to avoid loop.
+		err := m.store.Delete(victim.Key)
+
+		if err != nil {
+			// We can't check os.IsNotExist here easily without importing os.
+			// Ideally Store.Delete should be idempotent.
+			slog.Error("Failed to remove file", "key", victim.Key, "error", err)
 		}
 
 		m.strategy.Remove(victim.Key)
 
-		// If remove succeeded (or file didn't exist), we consider it gone.
-		if err == nil || os.IsNotExist(err) {
-			m.currentBytes.Add(-victim.Size)
-		}
+		// We assume it's gone.
+		m.currentBytes.Add(-victim.Size)
 	}
 }

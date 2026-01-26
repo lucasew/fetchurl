@@ -20,11 +20,47 @@ type LocalRepository struct {
 	g        singleflight.Group
 }
 
+// Ensure LocalRepository implements eviction.Store
+var _ eviction.Store = (*LocalRepository)(nil)
+
 func NewLocalRepository(cacheDir string, eviction *eviction.Manager) *LocalRepository {
 	return &LocalRepository{
 		CacheDir: cacheDir,
 		eviction: eviction,
 	}
+}
+
+func (r *LocalRepository) Walk(fn func(key string, size int64) error) error {
+	return filepath.WalkDir(r.CacheDir, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			if os.IsNotExist(err) && path == r.CacheDir {
+				return nil
+			}
+			return err
+		}
+		if d.IsDir() {
+			return nil
+		}
+
+		info, err := d.Info()
+		if err != nil {
+			slog.Warn("Failed to get file info", "file", path, "error", err)
+			return nil
+		}
+
+		rel, err := filepath.Rel(r.CacheDir, path)
+		if err != nil {
+			slog.Warn("Failed to get relative path", "path", path, "error", err)
+			return nil
+		}
+
+		return fn(rel, info.Size())
+	})
+}
+
+func (r *LocalRepository) Delete(key string) error {
+	path := filepath.Join(r.CacheDir, key)
+	return os.Remove(path)
 }
 
 func (r *LocalRepository) getPath(algo, hash string) string {

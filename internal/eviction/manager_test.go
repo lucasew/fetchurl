@@ -12,6 +12,40 @@ import (
 	"github.com/lucasew/fetchurl/internal/eviction/policy/maxsize"
 )
 
+type TestStore struct {
+	Dir string
+}
+
+func (s *TestStore) Walk(fn func(key string, size int64) error) error {
+	return filepath.WalkDir(s.Dir, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			if os.IsNotExist(err) && path == s.Dir {
+				return nil
+			}
+			return err
+		}
+		if d.IsDir() {
+			return nil
+		}
+
+		info, err := d.Info()
+		if err != nil {
+			return err
+		}
+
+		rel, err := filepath.Rel(s.Dir, path)
+		if err != nil {
+			return err
+		}
+
+		return fn(rel, info.Size())
+	})
+}
+
+func (s *TestStore) Delete(key string) error {
+	return os.Remove(filepath.Join(s.Dir, key))
+}
+
 func TestManager(t *testing.T) {
 	cacheDir := t.TempDir()
 	maxBytes := int64(50)
@@ -19,7 +53,8 @@ func TestManager(t *testing.T) {
 
 	strat := lru.New()
 	policies := []policy.Policy{&maxsize.Policy{MaxBytes: maxBytes}}
-	mgr := eviction.NewManager(cacheDir, policies, interval, strat)
+	mgr := eviction.NewManager(policies, interval, strat)
+	mgr.SetStore(&TestStore{Dir: cacheDir})
 
 	// Create some dummy files
 	createFile(t, cacheDir, "file1", 20)

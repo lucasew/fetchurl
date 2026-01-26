@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"log/slog"
@@ -58,32 +59,7 @@ func (h *CASHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// Not in local, try to Put
 	queryUrls := r.URL.Query()["url"]
-
-	fetcher := func() (io.ReadCloser, int64, error) {
-		// Try upstreams first
-		for _, upstream := range h.Upstreams {
-			reader, size, err := upstream.Get(r.Context(), algo, hash)
-			if err == nil {
-				return reader, size, nil
-			}
-		}
-
-		// Try query URLs
-		for _, u := range queryUrls {
-			slog.Info("Downloading from query URL", "url", u, "algo", algo, "hash", hash)
-			resp, err := http.Get(u)
-			if err != nil {
-				continue
-			}
-			if resp.StatusCode != http.StatusOK {
-				resp.Body.Close()
-				continue
-			}
-			return resp.Body, resp.ContentLength, nil
-		}
-
-		return nil, 0, fmt.Errorf("hash not found in upstreams or query URLs")
-	}
+	fetcher := h.createFetcher(r.Context(), algo, hash, queryUrls)
 
 	err = h.Local.Put(r.Context(), algo, hash, fetcher)
 	if err != nil {
@@ -108,4 +84,37 @@ func (h *CASHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 func (h *CASHandler) setCacheHeaders(w http.ResponseWriter, algo, hash string) {
 	w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 	w.Header().Set("Link", fmt.Sprintf("</fetch/%s/%s>; rel=\"canonical\"", algo, hash))
+}
+
+func (h *CASHandler) createFetcher(ctx context.Context, algo, hash string, queryUrls []string) repository.Fetcher {
+	return func() (io.ReadCloser, int64, error) {
+		// Try upstreams first
+		for _, upstream := range h.Upstreams {
+			reader, size, err := upstream.Get(ctx, algo, hash)
+			if err == nil {
+				return reader, size, nil
+			}
+		}
+
+		// Try query URLs
+		for _, u := range queryUrls {
+			slog.Info("Downloading from query URL", "url", u, "algo", algo, "hash", hash)
+			req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+			if err != nil {
+				continue
+			}
+
+			resp, err := http.DefaultClient.Do(req)
+			if err != nil {
+				continue
+			}
+			if resp.StatusCode != http.StatusOK {
+				resp.Body.Close()
+				continue
+			}
+			return resp.Body, resp.ContentLength, nil
+		}
+
+		return nil, 0, fmt.Errorf("hash not found in upstreams or query URLs")
+	}
 }
