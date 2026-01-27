@@ -22,6 +22,7 @@ type Server struct {
 func NewServer(local repository.WritableRepository, fetcher fetcher.Fetcher, rules []Rule, fallback http.Handler) *Server {
 	proxy := goproxy.NewProxyHttpServer()
 	proxy.Verbose = true
+	proxy.OnRequest().HandleConnect(goproxy.AlwaysMitm)
 
 	if fallback != nil {
 		proxy.NonproxyHandler = fallback
@@ -39,6 +40,7 @@ func NewServer(local repository.WritableRepository, fetcher fetcher.Fetcher, rul
 }
 
 func (s *Server) handleRequest(r *http.Request, ctx *goproxy.ProxyCtx) (*http.Request, *http.Response) {
+	slog.Debug("request", "curl", ctx.Req.URL, "rurl", r.URL)
 	for _, rule := range s.Rules {
 		res := rule(r.URL)
 		if res != nil {
