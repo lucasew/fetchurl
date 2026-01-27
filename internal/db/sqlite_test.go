@@ -26,17 +26,18 @@ func TestDB(t *testing.T) {
 
 	ctx := context.Background()
 
-	// Test Insert
+	// Test Insert with algo
 	entries := map[string]string{
 		"http://example.com/pkg1": "hash1",
 		"http://example.com/pkg2": "hash2",
 	}
-	if err := db.Insert(ctx, entries); err != nil {
+	algo := "sha256"
+	if err := db.Insert(ctx, algo, entries); err != nil {
 		t.Fatalf("Insert() failed: %v", err)
 	}
 
 	// Test Get
-	hash, found, err := db.Get(ctx, "http://example.com/pkg1")
+	gotAlgo, hash, found, err := db.Get(ctx, "http://example.com/pkg1")
 	if err != nil {
 		t.Fatalf("Get() failed: %v", err)
 	}
@@ -46,9 +47,12 @@ func TestDB(t *testing.T) {
 	if hash != "hash1" {
 		t.Errorf("Expected hash1, got %s", hash)
 	}
+	if gotAlgo != algo {
+		t.Errorf("Expected algo %s, got %s", algo, gotAlgo)
+	}
 
 	// Test Get not found
-	_, found, err = db.Get(ctx, "http://example.com/pkg3")
+	_, _, found, err = db.Get(ctx, "http://example.com/pkg3")
 	if err != nil {
 		t.Fatalf("Get() failed: %v", err)
 	}
@@ -57,7 +61,7 @@ func TestDB(t *testing.T) {
 	}
 
 	// Test Rule
-	rule := NewRule(db, "sha256")
+	rule := NewRule(db)
 	u, _ := url.Parse("http://example.com/pkg2")
 	res := rule(ctx, u)
 	if res == nil {

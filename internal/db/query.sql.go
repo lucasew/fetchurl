@@ -9,32 +9,38 @@ import (
 	"context"
 )
 
-const getHash = `-- name: GetHash :one
-SELECT hash FROM urls
+const getEntry = `-- name: GetEntry :one
+SELECT algo, hash FROM urls
 WHERE url = ? LIMIT 1
 `
 
-func (q *Queries) GetHash(ctx context.Context, url string) (string, error) {
-	row := q.db.QueryRowContext(ctx, getHash, url)
-	var hash string
-	err := row.Scan(&hash)
-	return hash, err
+type GetEntryRow struct {
+	Algo string
+	Hash string
+}
+
+func (q *Queries) GetEntry(ctx context.Context, url string) (GetEntryRow, error) {
+	row := q.db.QueryRowContext(ctx, getEntry, url)
+	var i GetEntryRow
+	err := row.Scan(&i.Algo, &i.Hash)
+	return i, err
 }
 
 const insertHash = `-- name: InsertHash :exec
 INSERT OR REPLACE INTO urls (
-  url, hash
+  url, hash, algo
 ) VALUES (
-  ?, ?
+  ?, ?, ?
 )
 `
 
 type InsertHashParams struct {
 	Url  string
 	Hash string
+	Algo string
 }
 
 func (q *Queries) InsertHash(ctx context.Context, arg InsertHashParams) error {
-	_, err := q.db.ExecContext(ctx, insertHash, arg.Url, arg.Hash)
+	_, err := q.db.ExecContext(ctx, insertHash, arg.Url, arg.Hash, arg.Algo)
 	return err
 }

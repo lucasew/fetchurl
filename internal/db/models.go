@@ -7,4 +7,5 @@ package db
 type Url struct {
 	Url  string
 	Hash string
+	Algo string
 }

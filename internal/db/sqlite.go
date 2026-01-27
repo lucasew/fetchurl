@@ -33,6 +33,12 @@ func Open(path string) (*DB, error) {
 		return nil, fmt.Errorf("failed to ping database: %w", err)
 	}
 
+	// Enable WAL mode
+	if _, err := db.Exec("PRAGMA journal_mode=WAL;"); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("failed to enable WAL mode: %w", err)
+	}
+
 	if err := migrateDB(db); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("failed to run migrations: %w", err)
@@ -74,7 +80,7 @@ func (d *DB) Close() error {
 }
 
 // Insert inserts multiple URL->Hash mappings in a single transaction.
-func (d *DB) Insert(ctx context.Context, entries map[string]string) error {
+func (d *DB) Insert(ctx context.Context, algo string, entries map[string]string) error {
 	tx, err := d.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
@@ -87,6 +93,7 @@ func (d *DB) Insert(ctx context.Context, entries map[string]string) error {
 		err := qtx.InsertHash(ctx, InsertHashParams{
 			Url:  u,
 			Hash: h,
+			Algo: algo,
 		})
 		if err != nil {
 			return fmt.Errorf("failed to insert %s: %w", u, err)
@@ -101,13 +108,13 @@ func (d *DB) Insert(ctx context.Context, entries map[string]string) error {
 }
 
 // Get retrieves the hash for a given URL.
-func (d *DB) Get(ctx context.Context, u string) (string, bool, error) {
-	hash, err := d.Queries.GetHash(ctx, u)
+func (d *DB) Get(ctx context.Context, u string) (string, string, bool, error) {
+	entry, err := d.Queries.GetEntry(ctx, u)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return "", false, nil
+			return "", "", false, nil
 		}
-		return "", false, fmt.Errorf("failed to get hash for url %s: %w", u, err)
+		return "", "", false, fmt.Errorf("failed to get hash for url %s: %w", u, err)
 	}
-	return hash, true, nil
+	return entry.Algo, entry.Hash, true, nil
 }
