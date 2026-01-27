@@ -47,7 +47,7 @@ if err != nil {
 			continue
 		}
 		if resp.StatusCode != http.StatusOK {
-			resp.Body.Close()
+			_ = resp.Body.Close()
 			continue
 		}
 		return resp.Body, resp.ContentLength, nil
