@@ -53,7 +53,7 @@ func NewServer(local repository.WritableRepository, fetcher fetcher.Fetcher, rul
 func (s *Server) handleRequest(r *http.Request, ctx *goproxy.ProxyCtx) (*http.Request, *http.Response) {
 	slog.Debug("request", "curl", ctx.Req.URL, "rurl", r.URL)
 	for _, rule := range s.Rules {
-		res := rule(r.URL)
+		res := rule(r.Context(), r.URL)
 		if res != nil {
 			algo, hash := res.Algo, res.Hash
 			slog.Info("Proxy rule matched", "url", r.URL.String(), "algo", algo, "hash", hash)

@@ -1,6 +1,8 @@
 [tools]
 go = "1.25.6"
 "go:golang.org/x/tools/gopls" = "latest"
+sqlc = "1.30.0"
 
-[tasks.install]
-run = "go get ./..."
+[tasks]
+codegen = "sqlc generate"
+install = "go get ./..."

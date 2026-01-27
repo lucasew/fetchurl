@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"context"
 	"net/url"
 	"regexp"
 )
@@ -13,12 +14,12 @@ type RuleResult struct {
 
 // Rule defines a function for matching URLs to CAS content.
 // It returns a RuleResult if matched, or nil if not.
-type Rule func(*url.URL) *RuleResult
+type Rule func(context.Context, *url.URL) *RuleResult
 
 // NewRegexRule creates a Rule that matches requests using a regular expression.
 // It expects the regex to extract the hash.
 func NewRegexRule(regex *regexp.Regexp, algo string) Rule {
-	return func(u *url.URL) *RuleResult {
+	return func(ctx context.Context, u *url.URL) *RuleResult {
 		urlString := u.String()
 		matches := regex.FindStringSubmatch(urlString)
 		if matches == nil {
