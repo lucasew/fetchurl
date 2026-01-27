@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"crypto/tls"
 	"io"
 	"log/slog"
 	"net/http"
@@ -19,10 +20,20 @@ type Server struct {
 
 // NewServer creates a new Proxy Server.
 // fallback is the handler to use for non-proxy requests (e.g. local routes).
-func NewServer(local repository.WritableRepository, fetcher fetcher.Fetcher, rules []Rule, fallback http.Handler) *Server {
+func NewServer(local repository.WritableRepository, fetcher fetcher.Fetcher, rules []Rule, fallback http.Handler, caCert *tls.Certificate) *Server {
 	proxy := goproxy.NewProxyHttpServer()
 	proxy.Verbose = true
-	proxy.OnRequest().HandleConnect(goproxy.AlwaysMitm)
+
+	if caCert != nil {
+		proxy.OnRequest().HandleConnect(goproxy.FuncHttpsHandler(func(host string, ctx *goproxy.ProxyCtx) (*goproxy.ConnectAction, string) {
+			return &goproxy.ConnectAction{
+				Action:    goproxy.ConnectMitm,
+				TLSConfig: goproxy.TLSConfigFromCA(caCert),
+			}, host
+		}))
+	} else {
+		proxy.OnRequest().HandleConnect(goproxy.AlwaysMitm)
+	}
 
 	if fallback != nil {
 		proxy.NonproxyHandler = fallback

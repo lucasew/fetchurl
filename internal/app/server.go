@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -29,6 +30,10 @@ type Config struct {
 	EvictionInterval time.Duration
 	EvictionStrategy string
 	Upstreams        []string
+	CaCertPath       string
+	CaKeyPath        string
+	CaCertContent    string
+	CaKeyContent     string
 }
 
 func NewServer(cfg Config) (*http.Server, func(), error) {
@@ -101,8 +106,34 @@ func NewServer(cfg Config) (*http.Server, func(), error) {
 
 	rules := []proxy.Rule{sha256Rule, dbRule}
 
+	var caCert *tls.Certificate
+	var errCert error
+
+	if cfg.CaCertContent != "" && cfg.CaKeyContent != "" {
+		slog.Info("Loading CA certificate from content")
+		cert, err := tls.X509KeyPair([]byte(cfg.CaCertContent), []byte(cfg.CaKeyContent))
+		if err != nil {
+			errCert = fmt.Errorf("failed to parse CA content: %w", err)
+		} else {
+			caCert = &cert
+		}
+	} else if cfg.CaCertPath != "" && cfg.CaKeyPath != "" {
+		slog.Info("Loading CA certificate from file", "cert", cfg.CaCertPath, "key", cfg.CaKeyPath)
+		cert, err := tls.LoadX509KeyPair(cfg.CaCertPath, cfg.CaKeyPath)
+		if err != nil {
+			errCert = fmt.Errorf("failed to load CA keypair from file: %w", err)
+		} else {
+			caCert = &cert
+		}
+	}
+
+	if errCert != nil {
+		cancel()
+		return nil, nil, errCert
+	}
+
 	// Initialize Proxy Server with fallback Mux
-	proxyServer := proxy.NewServer(localRepo, fetchService, rules, fallbackMux)
+	proxyServer := proxy.NewServer(localRepo, fetchService, rules, fallbackMux, caCert)
 
 	addr := fmt.Sprintf(":%d", cfg.Port)
 	slog.Info("Starting server (Proxy + CAS)", "addr", addr, "cache_dir", cfg.CacheDir, "db_path", dbPath)

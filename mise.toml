@@ -5,3 +5,4 @@ sqlc = "1.30.0"
 
 [tasks]
 codegen = "sqlc generate"
+install = "go get ./..."
