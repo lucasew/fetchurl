@@ -1,10 +1,15 @@
-FROM golang:1.24.0-alpine AS builder
+FROM jdxcode/mise:latest AS builder
 
 WORKDIR /app
 COPY go.mod go.sum ./
-RUN go mod download
+# Install go using mise
+RUN mise use -g go@1.24.0
+RUN mise install
+# Ensure go is in path or run with mise exec
+RUN mise exec -- go mod download
 COPY . .
-RUN go build -o fetchurl ./cmd/fetchurl
+# Disable CGO for static build compatible with Alpine
+RUN mise exec -- env CGO_ENABLED=0 go build -o fetchurl ./cmd/fetchurl
 
 FROM alpine:latest
 WORKDIR /app
