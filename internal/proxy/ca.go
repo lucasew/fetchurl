@@ -58,12 +58,16 @@ func GenerateCA(certPath, keyPath string) error {
 		return fmt.Errorf("failed to write data to %s: %w", certPath, err)
 	}
 
-	// Write private key to file
-	keyOut, err := os.Create(keyPath)
+	// Write private key to file - using 0600 permission
+	keyOut, err := os.OpenFile(keyPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
 	if err != nil {
 		return fmt.Errorf("failed to open %s for writing: %w", keyPath, err)
 	}
-	defer keyOut.Close()
+	defer func() {
+		if closeErr := keyOut.Close(); closeErr != nil && err == nil {
+			err = fmt.Errorf("failed to close key file: %w", closeErr)
+		}
+	}()
 
 	privBytes := x509.MarshalPKCS1PrivateKey(priv)
 	if err := pem.Encode(keyOut, &pem.Block{Type: "RSA PRIVATE KEY", Bytes: privBytes}); err != nil {
