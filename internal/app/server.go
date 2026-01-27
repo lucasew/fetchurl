@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"os"
 	"path/filepath"
 	"regexp"
 	"time"
@@ -31,12 +32,52 @@ type Config struct {
 	EvictionInterval time.Duration
 	EvictionStrategy string
 	Upstreams        []string
-	CaCertPath       string
-	CaKeyPath        string
-	CaCertContent    string
-	CaKeyContent     string
-	CaCertHex        string
-	CaKeyHex         string
+	CaCert           string
+	CaKey            string
+}
+
+// loadCAContent resolves the CA content from path, hex, or raw string.
+func loadCAContent(input string) ([]byte, error) {
+	if input == "" {
+		return nil, nil
+	}
+
+	// 1. Try file path (naive check: if file exists)
+	// Note: If input is a path that doesn't exist but is meant to be content, this might fail or be skipped.
+	// However, usually paths are short and content is long (PEM).
+	// Let's rely on standard practice: if it looks like PEM (contains -----BEGIN), treat as content.
+	// If it is hex (no PEM headers, only hex chars), treat as hex.
+	// Else try file.
+
+	// Check for PEM
+	if regexp.MustCompile(`-----BEGIN`).MatchString(input) {
+		return []byte(input), nil
+	}
+
+	// Check for Hex
+	// Hex string usually doesn't contain spaces/newlines if passed via cli/env correctly,
+	// but might have them if copy-pasted. Let's assume strict hex for now or sanitized.
+	// A simple check: if it decodes successfully as hex and is long enough.
+	// But "deadbeef" is valid hex and also a valid file path potentially.
+	// Let's prioritize file if it exists.
+
+	// Try Hex decode
+	// Prioritize hex if it looks like hex (no file path separators and valid hex)
+	// This avoids ambiguity if a file named "deadbeef" exists but we meant content,
+	// but generally file paths contain / or .
+	if !regexp.MustCompile(`[/\\]`).MatchString(input) {
+		if bytes, err := hex.DecodeString(input); err == nil && len(bytes) > 0 {
+			return bytes, nil
+		}
+	}
+
+	// Try reading file
+	if _, err := os.Stat(input); err == nil {
+		return os.ReadFile(input)
+	}
+
+	// Fallback: treat as raw bytes (though likely invalid if not PEM)
+	return []byte(input), nil
 }
 
 func NewServer(cfg Config) (*http.Server, func(), error) {
@@ -113,41 +154,24 @@ func NewServer(cfg Config) (*http.Server, func(), error) {
 	var caCert *tls.Certificate
 	var errCert error
 
-	if cfg.CaCertHex != "" && cfg.CaKeyHex != "" {
-		certBytes, err := hex.DecodeString(cfg.CaCertHex)
+	if cfg.CaCert != "" && cfg.CaKey != "" {
+		slog.Info("Loading CA certificate")
+		certBytes, err := loadCAContent(cfg.CaCert)
 		if err != nil {
-			errCert = fmt.Errorf("failed to decode CA cert hex: %w", err)
+			errCert = fmt.Errorf("failed to load CA cert: %w", err)
 		}
-		keyBytes, err := hex.DecodeString(cfg.CaKeyHex)
+		keyBytes, err := loadCAContent(cfg.CaKey)
 		if err != nil {
-			errCert = fmt.Errorf("failed to decode CA key hex: %w", err)
+			errCert = fmt.Errorf("failed to load CA key: %w", err)
 		}
 
 		if errCert == nil {
-			slog.Info("Loading CA certificate from hex content")
 			cert, err := tls.X509KeyPair(certBytes, keyBytes)
 			if err != nil {
-				errCert = fmt.Errorf("failed to parse CA hex content: %w", err)
+				errCert = fmt.Errorf("failed to parse CA keypair: %w", err)
 			} else {
 				caCert = &cert
 			}
-		}
-
-	} else if cfg.CaCertContent != "" && cfg.CaKeyContent != "" {
-		slog.Info("Loading CA certificate from content")
-		cert, err := tls.X509KeyPair([]byte(cfg.CaCertContent), []byte(cfg.CaKeyContent))
-		if err != nil {
-			errCert = fmt.Errorf("failed to parse CA content: %w", err)
-		} else {
-			caCert = &cert
-		}
-	} else if cfg.CaCertPath != "" && cfg.CaKeyPath != "" {
-		slog.Info("Loading CA certificate from file", "cert", cfg.CaCertPath, "key", cfg.CaKeyPath)
-		cert, err := tls.LoadX509KeyPair(cfg.CaCertPath, cfg.CaKeyPath)
-		if err != nil {
-			errCert = fmt.Errorf("failed to load CA keypair from file: %w", err)
-		} else {
-			caCert = &cert
 		}
 	}
 
