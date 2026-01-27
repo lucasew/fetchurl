@@ -5,9 +5,11 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"path/filepath"
 	"regexp"
 	"time"
 
+	"github.com/lucasew/fetchurl/internal/db"
 	"github.com/lucasew/fetchurl/internal/eviction"
 	_ "github.com/lucasew/fetchurl/internal/eviction/lru"
 	"github.com/lucasew/fetchurl/internal/eviction/policy"
@@ -66,6 +68,14 @@ func NewServer(cfg Config) (*http.Server, func(), error) {
 	// Start eviction manager
 	go mgr.Start(ctx)
 
+	// Setup DB
+	dbPath := filepath.Join(cfg.CacheDir, "links.db")
+	database, err := db.Open(dbPath)
+	if err != nil {
+		cancel()
+		return nil, nil, fmt.Errorf("failed to open database at %s: %w", dbPath, err)
+	}
+
 	localRepo := repository.NewLocalRepository(cfg.CacheDir, mgr)
 	var upstreamRepos []repository.Repository
 	for _, u := range cfg.Upstreams {
@@ -85,13 +95,17 @@ func NewServer(cfg Config) (*http.Server, func(), error) {
 		regexp.MustCompile(`sha256/(?P<hash>[a-f0-9]{64})`),
 		"sha256",
 	)
-	rules := []proxy.Rule{sha256Rule}
+
+	// DB Rule
+	dbRule := db.NewRule(database, "sha256")
+
+	rules := []proxy.Rule{sha256Rule, dbRule}
 
 	// Initialize Proxy Server with fallback Mux
 	proxyServer := proxy.NewServer(localRepo, fetchService, rules, fallbackMux)
 
 	addr := fmt.Sprintf(":%d", cfg.Port)
-	slog.Info("Starting server (Proxy + CAS)", "addr", addr, "cache_dir", cfg.CacheDir)
+	slog.Info("Starting server (Proxy + CAS)", "addr", addr, "cache_dir", cfg.CacheDir, "db_path", dbPath)
 
 	server := &http.Server{
 		Addr:    addr,
@@ -99,6 +113,7 @@ func NewServer(cfg Config) (*http.Server, func(), error) {
 	}
 
 	cleanup := func() {
+		database.Close()
 		cancel()
 	}
 

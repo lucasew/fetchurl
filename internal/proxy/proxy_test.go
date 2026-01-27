@@ -79,7 +79,7 @@ func TestRegexRule(t *testing.T) {
 
 	for _, tt := range tests {
 		req := httptest.NewRequest("GET", tt.url, nil)
-		res := rule(req.URL)
+		res := rule(req.Context(), req.URL)
 
 		matched := res != nil
 		if matched != tt.match {
