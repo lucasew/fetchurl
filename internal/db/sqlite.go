@@ -3,19 +3,28 @@ package db
 import (
 	"context"
 	"database/sql"
+	"embed"
 	"fmt"
+	"log/slog"
 
-	_ "github.com/mattn/go-sqlite3"
+	"github.com/golang-migrate/migrate/v4"
+	"github.com/golang-migrate/migrate/v4/database/sqlite"
+	"github.com/golang-migrate/migrate/v4/source/iofs"
+	_ "modernc.org/sqlite"
 )
+
+//go:embed migrations/*.sql
+var migrationsFS embed.FS
 
 // DB represents the database connection.
 type DB struct {
+	*Queries
 	db *sql.DB
 }
 
-// New creates a new DB instance and initializes the schema.
-func New(path string) (*DB, error) {
-	db, err := sql.Open("sqlite3", path)
+// Open creates a new DB instance and initializes the schema.
+func Open(path string) (*DB, error) {
+	db, err := sql.Open("sqlite", path)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
@@ -24,26 +33,38 @@ func New(path string) (*DB, error) {
 		return nil, fmt.Errorf("failed to ping database: %w", err)
 	}
 
-	d := &DB{db: db}
-	if err := d.init(); err != nil {
+	if err := migrateDB(db); err != nil {
 		db.Close()
-		return nil, err
+		return nil, fmt.Errorf("failed to run migrations: %w", err)
 	}
 
-	return d, nil
+	return &DB{
+		Queries: New(db),
+		db:      db,
+	}, nil
 }
 
-func (d *DB) init() error {
-	query := `
-	CREATE TABLE IF NOT EXISTS urls (
-		url TEXT PRIMARY KEY,
-		hash TEXT NOT NULL
-	);
-	`
-	_, err := d.db.Exec(query)
+func migrateDB(db *sql.DB) error {
+	driver, err := sqlite.WithInstance(db, &sqlite.Config{})
 	if err != nil {
-		return fmt.Errorf("failed to create table: %w", err)
+		return fmt.Errorf("failed to create migrate driver: %w", err)
 	}
+
+	d, err := iofs.New(migrationsFS, "migrations")
+	if err != nil {
+		return fmt.Errorf("failed to create iofs source: %w", err)
+	}
+
+	m, err := migrate.NewWithInstance("iofs", d, "sqlite", driver)
+	if err != nil {
+		return fmt.Errorf("failed to create migrate instance: %w", err)
+	}
+
+	if err := m.Up(); err != nil && err != migrate.ErrNoChange {
+		return fmt.Errorf("failed to migrate up: %w", err)
+	}
+
+	slog.Info("Database migrations applied successfully")
 	return nil
 }
 
@@ -60,14 +81,13 @@ func (d *DB) Insert(ctx context.Context, entries map[string]string) error {
 	}
 	defer tx.Rollback()
 
-	stmt, err := tx.PrepareContext(ctx, "INSERT OR REPLACE INTO urls (url, hash) VALUES (?, ?)")
-	if err != nil {
-		return fmt.Errorf("failed to prepare statement: %w", err)
-	}
-	defer stmt.Close()
+	qtx := d.Queries.WithTx(tx)
 
 	for u, h := range entries {
-		_, err := stmt.ExecContext(ctx, u, h)
+		err := qtx.InsertHash(ctx, InsertHashParams{
+			Url:  u,
+			Hash: h,
+		})
 		if err != nil {
 			return fmt.Errorf("failed to insert %s: %w", u, err)
 		}
@@ -82,8 +102,7 @@ func (d *DB) Insert(ctx context.Context, entries map[string]string) error {
 
 // Get retrieves the hash for a given URL.
 func (d *DB) Get(ctx context.Context, u string) (string, bool, error) {
-	var hash string
-	err := d.db.QueryRowContext(ctx, "SELECT hash FROM urls WHERE url = ?", u).Scan(&hash)
+	hash, err := d.Queries.GetHash(ctx, u)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return "", false, nil

@@ -1,0 +1,4 @@
+CREATE TABLE urls (
+	url TEXT PRIMARY KEY,
+	hash TEXT NOT NULL
+);

@@ -18,9 +18,9 @@ func TestDB(t *testing.T) {
 	defer os.Remove(dbPath)
 
 	// Initialize DB
-	db, err := New(dbPath)
+	db, err := Open(dbPath)
 	if err != nil {
-		t.Fatalf("New() failed: %v", err)
+		t.Fatalf("Open() failed: %v", err)
 	}
 	defer db.Close()
 

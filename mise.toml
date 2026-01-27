@@ -1,3 +1,7 @@
 [tools]
 go = "1.25.6"
 "go:golang.org/x/tools/gopls" = "latest"
+sqlc = "latest"
+
+[tasks]
+codegen = "sqlc generate"
