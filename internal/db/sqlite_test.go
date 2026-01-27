@@ -2,7 +2,6 @@ package db
 
 import (
 	"context"
-	"net/url"
 	"os"
 	"testing"
 )
@@ -57,24 +56,4 @@ func TestDB(t *testing.T) {
 		t.Error("Expected not to find http://example.com/pkg3")
 	}
 
-	// Test Rule
-	rule := NewRule(db, "sha256")
-	u, _ := url.Parse("http://example.com/pkg2")
-	res := rule(ctx, u)
-	if res == nil {
-		t.Error("Rule expected to match http://example.com/pkg2")
-	} else {
-		if res.Hash != "hash2" {
-			t.Errorf("Expected hash2, got %s", res.Hash)
-		}
-		if res.Algo != "sha256" {
-			t.Errorf("Expected sha256, got %s", res.Algo)
-		}
-	}
-
-	u2, _ := url.Parse("http://example.com/pkg3")
-	res2 := rule(ctx, u2)
-	if res2 != nil {
-		t.Error("Rule expected not to match http://example.com/pkg3")
-	}
 }

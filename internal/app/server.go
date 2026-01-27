@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"crypto/tls"
+	"encoding/hex"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -34,6 +35,8 @@ type Config struct {
 	CaKeyPath        string
 	CaCertContent    string
 	CaKeyContent     string
+	CaCertHex        string
+	CaKeyHex         string
 }
 
 func NewServer(cfg Config) (*http.Server, func(), error) {
@@ -102,14 +105,35 @@ func NewServer(cfg Config) (*http.Server, func(), error) {
 	)
 
 	// DB Rule
-	dbRule := db.NewRule(database, "sha256")
+	dbRule := proxy.NewDBRule(database, "sha256")
+	dbRuleSha1 := proxy.NewDBRule(database, "sha1")
 
-	rules := []proxy.Rule{sha256Rule, dbRule}
+	rules := []proxy.Rule{sha256Rule, dbRule, dbRuleSha1}
 
 	var caCert *tls.Certificate
 	var errCert error
 
-	if cfg.CaCertContent != "" && cfg.CaKeyContent != "" {
+	if cfg.CaCertHex != "" && cfg.CaKeyHex != "" {
+		certBytes, err := hex.DecodeString(cfg.CaCertHex)
+		if err != nil {
+			errCert = fmt.Errorf("failed to decode CA cert hex: %w", err)
+		}
+		keyBytes, err := hex.DecodeString(cfg.CaKeyHex)
+		if err != nil {
+			errCert = fmt.Errorf("failed to decode CA key hex: %w", err)
+		}
+
+		if errCert == nil {
+			slog.Info("Loading CA certificate from hex content")
+			cert, err := tls.X509KeyPair(certBytes, keyBytes)
+			if err != nil {
+				errCert = fmt.Errorf("failed to parse CA hex content: %w", err)
+			} else {
+				caCert = &cert
+			}
+		}
+
+	} else if cfg.CaCertContent != "" && cfg.CaKeyContent != "" {
 		slog.Info("Loading CA certificate from content")
 		cert, err := tls.X509KeyPair([]byte(cfg.CaCertContent), []byte(cfg.CaKeyContent))
 		if err != nil {
@@ -134,6 +158,9 @@ func NewServer(cfg Config) (*http.Server, func(), error) {
 
 	// Initialize Proxy Server with fallback Mux
 	proxyServer := proxy.NewServer(localRepo, fetchService, rules, fallbackMux, caCert)
+
+	// Add NPM Interceptor
+	proxyServer.Proxy.OnResponse().Do(proxy.NewNpmResponseHandler(database.Queries))
 
 	addr := fmt.Sprintf(":%d", cfg.Port)
 	slog.Info("Starting server (Proxy + CAS)", "addr", addr, "cache_dir", cfg.CacheDir, "db_path", dbPath)

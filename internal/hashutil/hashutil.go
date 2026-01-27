@@ -1,6 +1,7 @@
 package hashutil
 
 import (
+	"crypto/sha1"
 	"crypto/sha256"
 	"crypto/sha512"
 	"fmt"
@@ -10,6 +11,7 @@ import (
 type HashFactory func() hash.Hash
 
 var registry = map[string]HashFactory{
+	"sha1":   sha1.New,
 	"sha256": sha256.New,
 	"sha512": sha512.New,
 }
