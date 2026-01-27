@@ -55,11 +55,11 @@ func (h *CASHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Try local first
 	reader, size, err := h.Local.Get(r.Context(), algo, hash)
 	if err == nil {
-		defer reader.Close()
+		defer func() { _ = reader.Close() }()
 		slog.Debug("Cache hit", "algo", algo, "hash", hash)
 		h.setCacheHeaders(w, algo, hash)
 		w.Header().Set("Content-Length", fmt.Sprintf("%d", size))
-		io.Copy(w, reader)
+		_, _ = io.Copy(w, reader)
 		return
 	}
 
@@ -90,11 +90,11 @@ func (h *CASHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Failed to retrieve after store", http.StatusInternalServerError)
 		return
 	}
-	defer reader.Close()
+	defer func() { _ = reader.Close() }()
 
 	h.setCacheHeaders(w, algo, hash)
 	w.Header().Set("Content-Length", fmt.Sprintf("%d", size))
-	io.Copy(w, reader)
+	_, _ = io.Copy(w, reader)
 }
 
 // setCacheHeaders sets the HTTP headers for immutable caching.

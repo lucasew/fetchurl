@@ -34,7 +34,7 @@ func (r *UpstreamRepository) Exists(ctx context.Context, algo, hash string) (boo
 	if err != nil {
 		return false, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	return resp.StatusCode == http.StatusOK, nil
 }
 
@@ -49,7 +49,7 @@ func (r *UpstreamRepository) Get(ctx context.Context, algo, hash string) (io.Rea
 		return nil, 0, err
 	}
 	if resp.StatusCode != http.StatusOK {
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		return nil, 0, fmt.Errorf("upstream returned status %d", resp.StatusCode)
 	}
 	return resp.Body, resp.ContentLength, nil

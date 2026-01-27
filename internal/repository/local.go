@@ -54,7 +54,7 @@ func (r *LocalRepository) Get(ctx context.Context, algo, hash string) (io.ReadCl
 	}
 	info, err := f.Stat()
 	if err != nil {
-		f.Close()
+		_ = f.Close()
 		return nil, 0, err
 	}
 	if r.eviction != nil {
@@ -86,7 +86,7 @@ func (r *LocalRepository) Put(ctx context.Context, algo, hash string, fetcher Fe
 		if err != nil {
 			return nil, err
 		}
-		defer reader.Close()
+		defer func() { _ = reader.Close() }()
 
 		// Prepare destination
 		finalPath := r.getPath(algo, hash)
@@ -98,8 +98,8 @@ func (r *LocalRepository) Put(ctx context.Context, algo, hash string, fetcher Fe
 		if err != nil {
 			return nil, fmt.Errorf("failed to create temp file: %w", err)
 		}
-		defer os.Remove(tmpFile.Name())
-		defer tmpFile.Close()
+		defer func() { _ = os.Remove(tmpFile.Name()) }()
+		defer func() { _ = tmpFile.Close() }()
 
 		hasher, err := hashutil.GetHasher(algo)
 		if err != nil {

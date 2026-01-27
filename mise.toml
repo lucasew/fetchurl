@@ -1,3 +1,42 @@
 [tools]
 go = "1.25.6"
 "go:golang.org/x/tools/gopls" = "latest"
+golangci-lint = "latest"
+actionlint = "latest"
+node = "latest"
+
+[tasks.install]
+run = "go mod download"
+description = "Install dependencies"
+
+[tasks.codegen]
+run = "echo 'No codegen configured'"
+description = "Update generated code"
+
+[tasks."lint:go"]
+run = "golangci-lint run ./..."
+description = "Lint Go code"
+
+[tasks."lint:md"]
+run = "npx markdownlint-cli2 \"**/*.md\" \"#node_modules\""
+description = "Lint Markdown files"
+
+[tasks.lint]
+depends = ["lint:*"]
+description = "Run all linters"
+
+[tasks."fmt:go"]
+run = "go fmt ./..."
+description = "Format Go code"
+
+[tasks.fmt]
+depends = ["fmt:*"]
+description = "Format all code"
+
+[tasks.test]
+run = "go test -v ./..."
+description = "Run tests"
+
+[tasks.ci]
+depends = ["lint", "test"]
+description = "Run CI pipeline"

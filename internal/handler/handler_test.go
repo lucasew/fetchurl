@@ -24,9 +24,9 @@ func TestCASHandler(t *testing.T) {
 	origin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/file1":
-			w.Write([]byte("content1"))
+			_, _ = w.Write([]byte("content1"))
 		case "/file2":
-			w.Write([]byte("content2"))
+			_, _ = w.Write([]byte("content2"))
 		case "/fail":
 			w.WriteHeader(http.StatusInternalServerError)
 		default:
@@ -170,7 +170,7 @@ func TestUpstream(t *testing.T) {
 		t.Fatal(err)
 	}
 	upstreamFile := filepath.Join(upstreamCacheDir, algo, hash)
-	os.WriteFile(upstreamFile, content, 0644)
+	_ = os.WriteFile(upstreamFile, content, 0644)
 
 	upstreamLocal := repository.NewLocalRepository(upstreamCacheDir, nil)
 	upstreamHandler := NewCASHandler(upstreamLocal, fetcher.NewService(nil))
