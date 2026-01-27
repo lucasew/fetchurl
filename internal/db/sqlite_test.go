@@ -59,7 +59,7 @@ func TestDB(t *testing.T) {
 	// Test Rule
 	rule := NewRule(db, "sha256")
 	u, _ := url.Parse("http://example.com/pkg2")
-	res := rule(u)
+	res := rule(ctx, u)
 	if res == nil {
 		t.Error("Rule expected to match http://example.com/pkg2")
 	} else {
@@ -72,7 +72,7 @@ func TestDB(t *testing.T) {
 	}
 
 	u2, _ := url.Parse("http://example.com/pkg3")
-	res2 := rule(u2)
+	res2 := rule(ctx, u2)
 	if res2 != nil {
 		t.Error("Rule expected not to match http://example.com/pkg3")
 	}
