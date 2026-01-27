@@ -37,7 +37,7 @@ func TestDB(t *testing.T) {
 	}
 
 	// Test Get
-	gotAlgo, hash, found, err := db.Get(ctx, "http://example.com/pkg1")
+	hash, found, err := db.Get(ctx, "http://example.com/pkg1", algo)
 	if err != nil {
 		t.Fatalf("Get() failed: %v", err)
 	}
@@ -47,12 +47,9 @@ func TestDB(t *testing.T) {
 	if hash != "hash1" {
 		t.Errorf("Expected hash1, got %s", hash)
 	}
-	if gotAlgo != algo {
-		t.Errorf("Expected algo %s, got %s", algo, gotAlgo)
-	}
 
 	// Test Get not found
-	_, _, found, err = db.Get(ctx, "http://example.com/pkg3")
+	_, found, err = db.Get(ctx, "http://example.com/pkg3", algo)
 	if err != nil {
 		t.Fatalf("Get() failed: %v", err)
 	}
@@ -61,7 +58,7 @@ func TestDB(t *testing.T) {
 	}
 
 	// Test Rule
-	rule := NewRule(db)
+	rule := NewRule(db, "sha256")
 	u, _ := url.Parse("http://example.com/pkg2")
 	res := rule(ctx, u)
 	if res == nil {

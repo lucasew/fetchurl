@@ -107,14 +107,17 @@ func (d *DB) Insert(ctx context.Context, algo string, entries map[string]string)
 	return nil
 }
 
-// Get retrieves the hash for a given URL.
-func (d *DB) Get(ctx context.Context, u string) (string, string, bool, error) {
-	entry, err := d.Queries.GetEntry(ctx, u)
+// Get retrieves the hash for a given URL and algo.
+func (d *DB) Get(ctx context.Context, u, algo string) (string, bool, error) {
+	hash, err := d.Queries.GetHash(ctx, GetHashParams{
+		Url:  u,
+		Algo: algo,
+	})
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return "", "", false, nil
+			return "", false, nil
 		}
-		return "", "", false, fmt.Errorf("failed to get hash for url %s: %w", u, err)
+		return "", false, fmt.Errorf("failed to get hash for url %s: %w", u, err)
 	}
-	return entry.Algo, entry.Hash, true, nil
+	return hash, true, nil
 }

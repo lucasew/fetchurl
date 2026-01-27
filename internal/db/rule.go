@@ -8,12 +8,13 @@ import (
 )
 
 // NewRule creates a Rule that queries the database for the hash of the URL.
-func NewRule(db *DB) proxy.Rule {
+// It uses the provided algo to look up the hash.
+func NewRule(db *DB, algo string) proxy.Rule {
 	return func(ctx context.Context, u *url.URL) *proxy.RuleResult {
 		// We use the full URL string as the key.
 		key := u.String()
 
-		algo, hash, found, err := db.Get(ctx, key)
+		hash, found, err := db.Get(ctx, key, algo)
 		if err != nil {
 			// In case of error, return nil to allow fallback
 			return nil

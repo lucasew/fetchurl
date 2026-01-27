@@ -97,7 +97,7 @@ func NewServer(cfg Config) (*http.Server, func(), error) {
 	)
 
 	// DB Rule
-	dbRule := db.NewRule(database)
+	dbRule := db.NewRule(database, "sha256")
 
 	rules := []proxy.Rule{sha256Rule, dbRule}
 

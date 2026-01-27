@@ -1,4 +1,6 @@
-CREATE TABLE IF NOT EXISTS urls (
-	url TEXT PRIMARY KEY,
-	hash TEXT NOT NULL
+CREATE TABLE urls (
+	url TEXT NOT NULL,
+	hash TEXT NOT NULL,
+	algo TEXT NOT NULL,
+	PRIMARY KEY (url, algo)
 );

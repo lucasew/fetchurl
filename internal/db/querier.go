@@ -9,7 +9,7 @@ import (
 )
 
 type Querier interface {
-	GetEntry(ctx context.Context, url string) (GetEntryRow, error)
+	GetHash(ctx context.Context, arg GetHashParams) (string, error)
 	InsertHash(ctx context.Context, arg InsertHashParams) error
 }
 
