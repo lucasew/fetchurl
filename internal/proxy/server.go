@@ -51,7 +51,7 @@ func (s *Server) handleRequest(r *http.Request, ctx *goproxy.ProxyCtx) (*http.Re
 			reader, size, err := s.Local.Get(r.Context(), algo, hash)
 			if err == nil {
 				slog.Info("Proxy cache hit", "algo", algo, "hash", hash)
-				return r, s.newResponse(r, reader, size, algo, hash)
+				return r, s.newResponse(r, reader, size)
 			}
 
 			// 2. Cache Miss -> Fetch & Store
@@ -77,7 +77,7 @@ func (s *Server) handleRequest(r *http.Request, ctx *goproxy.ProxyCtx) (*http.Re
 				slog.Error("Failed to retrieve after store in proxy", "error", err)
 				return r, nil
 			}
-			return r, s.newResponse(r, reader, size, algo, hash)
+			return r, s.newResponse(r, reader, size)
 		}
 	}
 
@@ -85,7 +85,7 @@ func (s *Server) handleRequest(r *http.Request, ctx *goproxy.ProxyCtx) (*http.Re
 	return r, nil
 }
 
-func (s *Server) newResponse(r *http.Request, body io.ReadCloser, size int64, algo, hash string) *http.Response {
+func (s *Server) newResponse(r *http.Request, body io.ReadCloser, size int64) *http.Response {
 	// 200 OK
 	resp := goproxy.NewResponse(r, "application/octet-stream", http.StatusOK, "")
 	resp.Body = body
