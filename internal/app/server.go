@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -27,6 +28,8 @@ type Config struct {
 	EvictionInterval time.Duration
 	EvictionStrategy string
 	Upstreams        []string
+	CaCertPath       string
+	CaKeyPath        string
 }
 
 func NewServer(cfg Config) (*http.Server, func(), error) {
@@ -87,8 +90,19 @@ func NewServer(cfg Config) (*http.Server, func(), error) {
 	)
 	rules := []proxy.Rule{sha256Rule}
 
+	var caCert *tls.Certificate
+	if cfg.CaCertPath != "" && cfg.CaKeyPath != "" {
+		slog.Info("Loading CA certificate", "cert", cfg.CaCertPath, "key", cfg.CaKeyPath)
+		cert, err := tls.LoadX509KeyPair(cfg.CaCertPath, cfg.CaKeyPath)
+		if err != nil {
+			cancel()
+			return nil, nil, fmt.Errorf("failed to load CA keypair: %w", err)
+		}
+		caCert = &cert
+	}
+
 	// Initialize Proxy Server with fallback Mux
-	proxyServer := proxy.NewServer(localRepo, fetchService, rules, fallbackMux)
+	proxyServer := proxy.NewServer(localRepo, fetchService, rules, fallbackMux, caCert)
 
 	addr := fmt.Sprintf(":%d", cfg.Port)
 	slog.Info("Starting server (Proxy + CAS)", "addr", addr, "cache_dir", cfg.CacheDir)
