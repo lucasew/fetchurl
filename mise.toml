@@ -5,14 +5,6 @@ golangci-lint = "2.8.0"
 actionlint = "1.7.10"
 node = "22.13.0"
 
-[tasks.install]
-run = "go mod download"
-description = "Install dependencies"
-
-[tasks.codegen]
-run = "echo 'No codegen configured'"
-description = "Update generated code"
-
 [tasks."lint:go"]
 run = "golangci-lint run ./..."
 description = "Lint Go code"
@@ -40,3 +32,9 @@ description = "Run tests"
 [tasks.ci]
 depends = ["lint", "test"]
 description = "Run CI pipeline"
+"go:golang.org/x/tools/gopls" = "latest"
+sqlc = "1.30.0"
+
+[tasks]
+codegen = "sqlc generate"
+install = "go get ./..."

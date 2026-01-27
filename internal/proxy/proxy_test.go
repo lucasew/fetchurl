@@ -79,7 +79,7 @@ func TestRegexRule(t *testing.T) {
 
 	for _, tt := range tests {
 		req := httptest.NewRequest("GET", tt.url, nil)
-		res := rule(req.URL)
+		res := rule(req.Context(), req.URL)
 
 		matched := res != nil
 		if matched != tt.match {
@@ -106,7 +106,7 @@ func TestProxyServer(t *testing.T) {
 	repo := &MockRepo{Data: make(map[string][]byte)}
 	fetcher := &MockFetcher{Content: "fetched-content"}
 
-	server := NewServer(repo, fetcher, []Rule{rule}, nil)
+	server := NewServer(repo, fetcher, []Rule{rule}, nil, nil)
 
 	// Test Case 1: Proxy Miss -> Fetch -> Store -> Serve
 	t.Run("MissAndFetch", func(t *testing.T) {

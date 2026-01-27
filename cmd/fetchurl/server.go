@@ -24,6 +24,10 @@ var serverCmd = &cobra.Command{
 			EvictionInterval: viper.GetDuration("eviction-interval"),
 			EvictionStrategy: viper.GetString("eviction-strategy"),
 			Upstreams:        viper.GetStringSlice("upstream"),
+			CaCertPath:       viper.GetString("ca-cert"),
+			CaKeyPath:        viper.GetString("ca-key"),
+			CaCertContent:    viper.GetString("ca-cert-content"),
+			CaKeyContent:     viper.GetString("ca-key-content"),
 		}
 
 		server, cleanup, err := app.NewServer(cfg)
@@ -49,6 +53,10 @@ func init() {
 	serverCmd.Flags().Int64("min-free-space", 0, "Min free disk space in bytes (if set, overrides max-cache-size)")
 	serverCmd.Flags().Duration("eviction-interval", time.Minute, "Interval to check for evictions")
 	serverCmd.Flags().String("eviction-strategy", "lru", "Eviction strategy to use (lru)")
+	serverCmd.Flags().String("ca-cert", "", "Path to CA certificate")
+	serverCmd.Flags().String("ca-key", "", "Path to CA private key")
+	serverCmd.Flags().String("ca-cert-content", "", "Content of CA certificate (PEM)")
+	serverCmd.Flags().String("ca-key-content", "", "Content of CA private key (PEM)")
 
 	mustBindPFlag("port", serverCmd.Flags().Lookup("port"))
 	mustBindPFlag("cache-dir", serverCmd.Flags().Lookup("cache-dir"))
@@ -56,6 +64,10 @@ func init() {
 	mustBindPFlag("min-free-space", serverCmd.Flags().Lookup("min-free-space"))
 	mustBindPFlag("eviction-interval", serverCmd.Flags().Lookup("eviction-interval"))
 	mustBindPFlag("eviction-strategy", serverCmd.Flags().Lookup("eviction-strategy"))
+	mustBindPFlag("ca-cert", serverCmd.Flags().Lookup("ca-cert"))
+	mustBindPFlag("ca-key", serverCmd.Flags().Lookup("ca-key"))
+	mustBindPFlag("ca-cert-content", serverCmd.Flags().Lookup("ca-cert-content"))
+	mustBindPFlag("ca-key-content", serverCmd.Flags().Lookup("ca-key-content"))
 }
 
 func mustBindPFlag(key string, flag *pflag.Flag) {
