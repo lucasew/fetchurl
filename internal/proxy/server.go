@@ -58,36 +58,17 @@ func (s *Server) handleRequest(r *http.Request, ctx *goproxy.ProxyCtx) (*http.Re
 			algo, hash := res.Algo, res.Hash
 			slog.Info("Proxy rule matched", "url", r.URL.String(), "algo", algo, "hash", hash)
 
-			// 1. Try Local Cache (HIT)
-			reader, size, err := s.Local.Get(r.Context(), algo, hash)
-			if err == nil {
-				slog.Info("Proxy cache hit", "algo", algo, "hash", hash)
-				return r, s.newResponse(r, reader, size, algo, hash)
-			}
-
-			// 2. Cache Miss -> Fetch & Store
-			slog.Info("Proxy cache miss, fetching", "algo", algo, "hash", hash)
-
-			// The fetch function for Local.Put.
-			// We pass the original request URL as the source.
-			// s.Fetcher (Service) will also check upstreams if configured.
 			fetchFn := func() (io.ReadCloser, int64, error) {
 				return s.Fetcher.Fetch(r.Context(), algo, hash, []string{r.URL.String()})
 			}
 
-			err = s.Local.Put(r.Context(), algo, hash, fetchFn)
+			reader, size, err := s.Local.GetOrFetch(r.Context(), algo, hash, fetchFn)
 			if err != nil {
 				slog.Warn("Failed to fetch/store in proxy, falling back to direct proxy", "error", err)
 				// Fallback: return nil response, goproxy will proxy the request normally
 				return r, nil
 			}
-
-			// 3. Serve after successful Store
-			reader, size, err = s.Local.Get(r.Context(), algo, hash)
-			if err != nil {
-				slog.Error("Failed to retrieve after store in proxy", "error", err)
-				return r, nil
-			}
+			slog.Info("Proxy served from cache", "algo", algo, "hash", hash)
 			return r, s.newResponse(r, reader, size, algo, hash)
 		}
 	}

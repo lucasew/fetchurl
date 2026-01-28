@@ -52,6 +52,16 @@ func (m *MockRepo) Put(ctx context.Context, algo, hash string, fetcher repositor
 	return nil
 }
 
+func (m *MockRepo) GetOrFetch(ctx context.Context, algo, hash string, fetcher repository.Fetcher) (io.ReadCloser, int64, error) {
+	if rc, size, err := m.Get(ctx, algo, hash); err == nil {
+		return rc, size, nil
+	}
+	if err := m.Put(ctx, algo, hash, fetcher); err != nil {
+		return nil, 0, err
+	}
+	return m.Get(ctx, algo, hash)
+}
+
 // MockFetcher implements fetcher.Fetcher
 type MockFetcher struct {
 	Content string
