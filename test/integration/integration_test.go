@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -70,9 +71,17 @@ func TestProxyIntegration(t *testing.T) {
 		Started:          true,
 	})
 	if err != nil {
+		// If we are in an environment where Docker is not available or rate limited, skip.
+		if strings.Contains(err.Error(), "rate limit") || strings.Contains(err.Error(), "connection refused") {
+			t.Skipf("Skipping integration test due to container failure: %v", err)
+		}
 		t.Fatalf("Failed to start container: %v", err)
 	}
-	defer container.Terminate(ctx)
+	defer func() {
+		if err := container.Terminate(ctx); err != nil {
+			t.Logf("failed to terminate container: %v", err)
+		}
+	}()
 
 	host, err := container.Host(ctx)
 	if err != nil {
