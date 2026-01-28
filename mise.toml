@@ -1,9 +1,10 @@
 [tools]
-go = "1.25.6"
-"go:golang.org/x/tools/gopls" = "0.21.0"
-golangci-lint = "2.8.0"
-actionlint = "1.7.10"
-node = "22.13.0"
+go = "1.24"
+"go:golang.org/x/tools/gopls" = "latest"
+golangci-lint = "latest"
+actionlint = "latest"
+node = "lts"
+sqlc = "latest"
 
 [tasks."lint:go"]
 run = "golangci-lint run ./..."
@@ -12,6 +13,10 @@ description = "Lint Go code"
 [tasks."lint:md"]
 run = "npx markdownlint-cli2 \"**/*.md\" \"#node_modules\""
 description = "Lint Markdown files"
+
+[tasks."lint:action"]
+run = "actionlint"
+description = "Lint GitHub Actions workflows"
 
 [tasks.lint]
 depends = ["lint:*"]
@@ -25,16 +30,34 @@ description = "Format Go code"
 depends = ["fmt:*"]
 description = "Format all code"
 
-[tasks.test]
+[tasks."test:go"]
 run = "go test -v ./..."
-description = "Run tests"
+description = "Run Go tests"
+
+[tasks.test]
+depends = ["test:*"]
+description = "Run all tests"
+
+[tasks.build]
+run = "go build -o fetchurl ./cmd/fetchurl"
+description = "Build the binary"
+
+[tasks."install:go"]
+run = "go mod download"
+description = "Install Go dependencies"
+
+[tasks.install]
+depends = ["install:*"]
+description = "Install all dependencies"
+
+[tasks."codegen:sqlc"]
+run = "sqlc generate"
+description = "Generate SQLC code"
+
+[tasks.codegen]
+depends = ["codegen:*"]
+description = "Run all codegen tasks"
 
 [tasks.ci]
-depends = ["lint", "test"]
+depends = ["lint", "test", "build"]
 description = "Run CI pipeline"
-"go:golang.org/x/tools/gopls" = "latest"
-sqlc = "1.30.0"
-
-[tasks]
-codegen = "sqlc generate"
-install = "go get ./..."

@@ -14,15 +14,15 @@ func TestDB(t *testing.T) {
 		t.Fatal(err)
 	}
 	dbPath := f.Name()
-	f.Close()
-	defer os.Remove(dbPath)
+	_ = f.Close()
+	defer func() { _ = os.Remove(dbPath) }()
 
 	// Initialize DB
 	db, err := Open(dbPath)
 	if err != nil {
 		t.Fatalf("Open() failed: %v", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	ctx := context.Background()
 

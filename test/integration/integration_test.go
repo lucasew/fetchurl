@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -26,7 +27,7 @@ func TestProxyIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tempDir)
+	defer func() { _ = os.RemoveAll(tempDir) }()
 
 	certPath := filepath.Join(tempDir, "ca.pem")
 	keyPath := filepath.Join(tempDir, "ca-key.pem")
@@ -70,9 +71,15 @@ func TestProxyIntegration(t *testing.T) {
 		Started:          true,
 	})
 	if err != nil {
+		if strings.Contains(err.Error(), "rate limit") || strings.Contains(err.Error(), "unauthenticated pull") {
+			t.Skipf("Skipping integration test due to Docker rate limit: %v", err)
+		}
+		if strings.Contains(err.Error(), "overlayfs") {
+			t.Skipf("Skipping integration test due to environment limitation: %v", err)
+		}
 		t.Fatalf("Failed to start container: %v", err)
 	}
-	defer container.Terminate(ctx)
+	defer func() { _ = container.Terminate(ctx) }()
 
 	host, err := container.Host(ctx)
 	if err != nil {
@@ -108,7 +115,7 @@ func TestProxyIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to make request via proxy: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("Expected 200 OK, got %d", resp.StatusCode)
