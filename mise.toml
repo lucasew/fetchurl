@@ -1,9 +1,10 @@
 [tools]
-go = "1.25.6"
-"go:golang.org/x/tools/gopls" = "0.21.0"
-golangci-lint = "2.8.0"
-actionlint = "1.7.10"
-node = "22.13.0"
+go = "1.24.3"
+"go:golang.org/x/tools/gopls" = "latest"
+golangci-lint = "1.64.6"
+actionlint = "1.7.7"
+node = "22.14.0"
+sqlc = "1.30.0"
 
 [tasks."lint:go"]
 run = "golangci-lint run ./..."
@@ -12,6 +13,10 @@ description = "Lint Go code"
 [tasks."lint:md"]
 run = "npx markdownlint-cli2 \"**/*.md\" \"#node_modules\""
 description = "Lint Markdown files"
+
+[tasks."lint:actions"]
+run = "actionlint"
+description = "Lint GitHub Actions workflows"
 
 [tasks.lint]
 depends = ["lint:*"]
@@ -29,12 +34,28 @@ description = "Format all code"
 run = "go test -v ./..."
 description = "Run tests"
 
-[tasks.ci]
-depends = ["lint", "test"]
-description = "Run CI pipeline"
-"go:golang.org/x/tools/gopls" = "latest"
-sqlc = "1.30.0"
+[tasks."test:integration"]
+run = """
+if [ "$CI" = "true" ]; then
+  go test -v -tags integration ./test/integration/...
+else
+  echo "Skipping integration tests locally (CI env var not set)"
+fi
+"""
+description = "Run integration tests (CI only)"
 
-[tasks]
-codegen = "sqlc generate"
-install = "go get ./..."
+[tasks.codegen]
+run = "sqlc generate"
+description = "Generate code (SQLC)"
+
+[tasks.install]
+run = "go mod download"
+description = "Install dependencies"
+
+[tasks.build]
+run = "go build -o fetchurl ./cmd/fetchurl"
+description = "Build the binary"
+
+[tasks.ci]
+depends = ["lint", "test", "test:integration"]
+description = "Run CI pipeline"

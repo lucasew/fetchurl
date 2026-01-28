@@ -1,3 +1,5 @@
+//go:build integration
+
 package integration
 
 import (
@@ -72,7 +74,9 @@ func TestProxyIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to start container: %v", err)
 	}
-	defer container.Terminate(ctx)
+	defer func() {
+		_ = container.Terminate(ctx)
+	}()
 
 	host, err := container.Host(ctx)
 	if err != nil {

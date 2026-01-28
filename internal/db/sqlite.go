@@ -85,7 +85,9 @@ func (d *DB) Insert(ctx context.Context, algo string, entries map[string]string)
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() {
+		_ = tx.Rollback()
+	}()
 
 	qtx := d.Queries.WithTx(tx)
 
