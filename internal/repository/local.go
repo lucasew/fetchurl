@@ -135,3 +135,23 @@ func (r *LocalRepository) Put(ctx context.Context, algo, hash string, fetcher Fe
 	})
 	return err
 }
+
+// GetOrFetch attempts to retrieve the file from the cache.
+// If it's missing, it uses the provided fetcher to download and store it,
+// then returns the file reader.
+func (r *LocalRepository) GetOrFetch(ctx context.Context, algo, hash string, fetcher Fetcher) (io.ReadCloser, int64, error) {
+	// 1. Try Local Cache (HIT)
+	reader, size, err := r.Get(ctx, algo, hash)
+	if err == nil {
+		return reader, size, nil
+	}
+
+	// 2. Cache Miss -> Fetch & Store
+	err = r.Put(ctx, algo, hash, fetcher)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	// 3. Serve after successful Store
+	return r.Get(ctx, algo, hash)
+}

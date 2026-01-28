@@ -52,42 +52,19 @@ func (h *CASHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Try local first
-	reader, size, err := h.Local.Get(r.Context(), algo, hash)
-	if err == nil {
-		defer func() { _ = reader.Close() }()
-		slog.Debug("Cache hit", "algo", algo, "hash", hash)
-		h.setCacheHeaders(w, algo, hash)
-		w.Header().Set("Content-Length", fmt.Sprintf("%d", size))
-		_, _ = io.Copy(w, reader)
-		return
-	}
-
-	slog.Info("Cache miss", "algo", algo, "hash", hash)
-
-	if r.Method == http.MethodHead {
-		http.Error(w, "Not found", http.StatusNotFound)
-		return
-	}
-
-	// Not in local, try to Put
 	queryUrls := r.URL.Query()["url"]
 
 	fetchFn := func() (io.ReadCloser, int64, error) {
+		if r.Method == http.MethodHead {
+			return nil, 0, fmt.Errorf("not found")
+		}
 		return h.Fetcher.Fetch(r.Context(), algo, hash, queryUrls)
 	}
 
-	err = h.Local.Put(r.Context(), algo, hash, fetchFn)
+	reader, size, err := h.Local.GetOrFetch(r.Context(), algo, hash, fetchFn)
 	if err != nil {
 		slog.Error("Failed to fetch/store", "algo", algo, "hash", hash, "error", err)
 		http.Error(w, fmt.Sprintf("Failed to fetch: %v", err), http.StatusNotFound)
-		return
-	}
-
-	// Serve after Put
-	reader, size, err = h.Local.Get(r.Context(), algo, hash)
-	if err != nil {
-		http.Error(w, "Failed to retrieve after store", http.StatusInternalServerError)
 		return
 	}
 	defer func() { _ = reader.Close() }()
