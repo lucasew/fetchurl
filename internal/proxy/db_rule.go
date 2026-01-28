@@ -7,25 +7,26 @@ import (
 	"github.com/lucasew/fetchurl/internal/db"
 )
 
-// NewDBRule creates a Rule that queries the database for the hash of the URL.
-// It uses the provided algo to look up the hash.
-func NewDBRule(database *db.DB, algo string) Rule {
-	return func(ctx context.Context, u *url.URL) *RuleResult {
-		// We use the full URL string as the key.
+// NewDBMultiRule creates a Rule that queries the database for all hashes of a URL.
+// Returns results ordered by priority (SHA256, SHA512, SHA1, others).
+func NewDBMultiRule(database *db.DB) Rule {
+	return func(ctx context.Context, u *url.URL) []RuleResult {
 		key := u.String()
 
-		hash, found, err := database.Get(ctx, key, algo)
-		if err != nil {
-			// In case of error, return nil to allow fallback
-			return nil
-		}
-		if !found {
+		hashes, err := database.GetAll(ctx, key)
+		if err != nil || len(hashes) == 0 {
 			return nil
 		}
 
-		return &RuleResult{
-			Algo: algo,
-			Hash: hash,
+		// Database query already returns ordered by priority via SQL
+		var results []RuleResult
+		for _, h := range hashes {
+			results = append(results, RuleResult{
+				Algo: h.Algo,
+				Hash: h.Hash,
+			})
 		}
+
+		return results
 	}
 }

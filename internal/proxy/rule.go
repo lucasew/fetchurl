@@ -13,13 +13,13 @@ type RuleResult struct {
 }
 
 // Rule defines a function for matching URLs to CAS content.
-// It returns a RuleResult if matched, or nil if not.
-type Rule func(context.Context, *url.URL) *RuleResult
+// It returns a slice of RuleResults ordered by priority, or nil/empty slice if not matched.
+type Rule func(context.Context, *url.URL) []RuleResult
 
 // NewRegexRule creates a Rule that matches requests using a regular expression.
 // It expects the regex to extract the hash.
 func NewRegexRule(regex *regexp.Regexp, algo string) Rule {
-	return func(ctx context.Context, u *url.URL) *RuleResult {
+	return func(ctx context.Context, u *url.URL) []RuleResult {
 		urlString := u.String()
 		matches := regex.FindStringSubmatch(urlString)
 		if matches == nil {
@@ -34,15 +34,18 @@ func NewRegexRule(regex *regexp.Regexp, algo string) Rule {
 			}
 		}
 
+		var hash string
 		if h, ok := result["hash"]; ok {
-			return &RuleResult{Algo: algo, Hash: h}
+			hash = h
+		} else if len(matches) > 1 {
+			// Fallback: use the first capturing group
+			hash = matches[1]
 		}
 
-		// Fallback: use the first capturing group
-		if len(matches) > 1 {
-			return &RuleResult{Algo: algo, Hash: matches[1]}
+		if hash == "" {
+			return nil
 		}
 
-		return nil
+		return []RuleResult{{Algo: algo, Hash: hash}}
 	}
 }

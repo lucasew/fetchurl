@@ -79,13 +79,14 @@ func TestRegexRule(t *testing.T) {
 
 	for _, tt := range tests {
 		req := httptest.NewRequest("GET", tt.url, nil)
-		res := rule(req.Context(), req.URL)
+		results := rule(req.Context(), req.URL)
 
-		matched := res != nil
+		matched := len(results) > 0
 		if matched != tt.match {
 			t.Errorf("Match(%q) = %v, want %v", tt.url, matched, tt.match)
 		}
 		if matched {
+			res := results[0]  // Take first result
 			if res.Algo != tt.wantAlgo {
 				t.Errorf("Match(%q) algo = %v, want %v", tt.url, res.Algo, tt.wantAlgo)
 			}

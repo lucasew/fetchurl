@@ -53,10 +53,17 @@ func NewServer(local repository.WritableRepository, fetcher fetcher.Fetcher, rul
 func (s *Server) handleRequest(r *http.Request, ctx *goproxy.ProxyCtx) (*http.Request, *http.Response) {
 	slog.Debug("request", "curl", ctx.Req.URL, "rurl", r.URL)
 	for _, rule := range s.Rules {
-		res := rule(r.Context(), r.URL)
-		if res != nil {
+		results := rule(r.Context(), r.URL)
+		if len(results) == 0 {
+			continue
+		}
+
+		slog.Info("Proxy rule matched", "url", r.URL.String(), "result_count", len(results))
+
+		// Try each hash in order
+		for _, res := range results {
 			algo, hash := res.Algo, res.Hash
-			slog.Info("Proxy rule matched", "url", r.URL.String(), "algo", algo, "hash", hash)
+			slog.Debug("Trying hash", "algo", algo, "hash", hash)
 
 			// 1. Try Local Cache (HIT)
 			reader, size, err := s.Local.Get(r.Context(), algo, hash)
@@ -77,19 +84,22 @@ func (s *Server) handleRequest(r *http.Request, ctx *goproxy.ProxyCtx) (*http.Re
 
 			err = s.Local.Put(r.Context(), algo, hash, fetchFn)
 			if err != nil {
-				slog.Warn("Failed to fetch/store in proxy, falling back to direct proxy", "error", err)
-				// Fallback: return nil response, goproxy will proxy the request normally
-				return r, nil
+				slog.Debug("Failed to fetch with hash, trying next", "algo", algo, "hash", hash, "error", err)
+				continue  // Try next hash
 			}
 
 			// 3. Serve after successful Store
 			reader, size, err = s.Local.Get(r.Context(), algo, hash)
 			if err != nil {
 				slog.Error("Failed to retrieve after store in proxy", "error", err)
-				return r, nil
+				continue  // Try next hash
 			}
 			return r, s.newResponse(r, reader, size, algo, hash)
 		}
+
+		// All hashes from this rule failed
+		slog.Warn("All hashes failed for matched rule", "url", r.URL.String())
+		return r, nil  // Fallback to normal proxy
 	}
 
 	// No rule matched, pass through

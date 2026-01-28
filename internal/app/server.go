@@ -139,17 +139,19 @@ func NewServer(cfg Config) (*http.Server, func(), error) {
 	fallbackMux.Handle("/fetch/", casHandler)
 
 	// Setup Proxy Rules
-	// Default rule: matches sha256 hashes in URL path
+	// Learning rules first (detect and learn from metadata)
+	npmLearningRule := proxy.NewNpmLearningRule(database)
+
+	// Regex rule: matches sha256 hashes in URL path
 	sha256Rule := proxy.NewRegexRule(
 		regexp.MustCompile(`sha256/(?P<hash>[a-f0-9]{64})`),
 		"sha256",
 	)
 
-	// DB Rule
-	dbRule := proxy.NewDBRule(database, "sha256")
-	dbRuleSha1 := proxy.NewDBRule(database, "sha1")
+	// Multi-hash DB rule: lookup all hashes ordered by priority
+	dbMultiRule := proxy.NewDBMultiRule(database)
 
-	rules := []proxy.Rule{sha256Rule, dbRule, dbRuleSha1}
+	rules := []proxy.Rule{npmLearningRule, sha256Rule, dbMultiRule}
 
 	var caCert *tls.Certificate
 	var errCert error
@@ -182,9 +184,6 @@ func NewServer(cfg Config) (*http.Server, func(), error) {
 
 	// Initialize Proxy Server with fallback Mux
 	proxyServer := proxy.NewServer(localRepo, fetchService, rules, fallbackMux, caCert)
-
-	// Add NPM Interceptor
-	proxyServer.Proxy.OnResponse().Do(proxy.NewNpmResponseHandler(database.Queries))
 
 	addr := fmt.Sprintf(":%d", cfg.Port)
 	slog.Info("Starting server (Proxy + CAS)", "addr", addr, "cache_dir", cfg.CacheDir, "db_path", dbPath)

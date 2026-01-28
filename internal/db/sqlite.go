@@ -121,3 +121,8 @@ func (d *DB) Get(ctx context.Context, u, algo string) (string, bool, error) {
 	}
 	return hash, true, nil
 }
+
+// GetAll retrieves all hashes for a given URL, ordered by priority.
+func (d *DB) GetAll(ctx context.Context, url string) ([]GetAllHashesRow, error) {
+	return d.Queries.GetAllHashes(ctx, url)
+}
