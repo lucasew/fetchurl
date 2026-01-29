@@ -30,7 +30,11 @@ type npmMetadata struct {
 // It detects requests to registry.npmjs.org, fetches metadata inline,
 // extracts tarball URLs and SHA1 hashes, and inserts them into the database.
 // Returns nil to pass the request through normally.
-func NewNpmLearningRule(database *db.DB) Rule {
+func NewNpmLearningRule(database *db.DB, client *http.Client) Rule {
+	if client == nil {
+		client = http.DefaultClient
+	}
+
 	registryRegex := regexp.MustCompile(`^https?://registry\.npmjs\.org/[^/]+/?$`)
 
 	return func(ctx context.Context, u *url.URL) []RuleResult {
@@ -42,7 +46,7 @@ func NewNpmLearningRule(database *db.DB) Rule {
 		slog.Debug("NPM learning rule matched", "url", u.String())
 
 		// Fetch metadata inline
-		resp, err := http.Get(u.String())
+		resp, err := client.Get(u.String())
 		if err != nil {
 			slog.Debug("Failed to fetch NPM metadata", "url", u.String(), "error", err)
 			return nil  // Failed to fetch, let request pass through

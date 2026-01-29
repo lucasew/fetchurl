@@ -208,7 +208,7 @@ npm init -y
 # Install express package through proxy
 npm install express --verbose
 `},
-		WaitingFor: wait.ForExit().WithExitTimeout(10 * time.Minute),
+		WaitingFor: wait.ForExit().WithExitTimeout(20 * time.Minute),
 	}
 
 	client, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{

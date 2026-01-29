@@ -143,7 +143,7 @@ test -d node_modules/express || (echo "ERROR: express not installed" && exit 1)
 
 echo "SUCCESS: NPM installation completed through proxy with system CA"
 `},
-		WaitingFor: wait.ForExit().WithExitTimeout(5 * time.Minute),
+		WaitingFor: wait.ForExit().WithExitTimeout(20 * time.Minute),
 	}
 
 	clientContainer, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{

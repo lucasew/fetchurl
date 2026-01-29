@@ -20,6 +20,7 @@ import (
 	"github.com/lucasew/fetchurl/internal/eviction/policy/minfree"
 	"github.com/lucasew/fetchurl/internal/fetcher"
 	"github.com/lucasew/fetchurl/internal/handler"
+	"github.com/lucasew/fetchurl/internal/httpclient"
 	"github.com/lucasew/fetchurl/internal/proxy"
 	"github.com/lucasew/fetchurl/internal/repository"
 )
@@ -130,34 +131,6 @@ func NewServer(cfg Config) (*http.Server, func(), error) {
 		return nil, nil, fmt.Errorf("failed to open database at %s: %w", dbPath, err)
 	}
 
-	localRepo := repository.NewLocalRepository(cfg.CacheDir, mgr)
-	var upstreamRepos []repository.Repository
-	for _, u := range cfg.Upstreams {
-		upstreamRepos = append(upstreamRepos, repository.NewUpstreamRepository(u))
-	}
-
-	fetchService := fetcher.NewService(upstreamRepos)
-	casHandler := handler.NewCASHandler(localRepo, fetchService)
-
-	// Fallback Mux for explicit /fetch/ routes
-	fallbackMux := http.NewServeMux()
-	fallbackMux.Handle("/fetch/", casHandler)
-
-	// Setup Proxy Rules
-	// Learning rules first (detect and learn from metadata)
-	npmLearningRule := proxy.NewNpmLearningRule(database)
-
-	// Regex rule: matches sha256 hashes in URL path
-	sha256Rule := proxy.NewRegexRule(
-		regexp.MustCompile(`sha256/(?P<hash>[a-f0-9]{64})`),
-		"sha256",
-	)
-
-	// Multi-hash DB rule: lookup all hashes ordered by priority
-	dbMultiRule := proxy.NewDBMultiRule(database)
-
-	rules := []proxy.Rule{npmLearningRule, sha256Rule, dbMultiRule}
-
 	var caCert *tls.Certificate
 	var errCert error
 
@@ -186,6 +159,43 @@ func NewServer(cfg Config) (*http.Server, func(), error) {
 		cancel()
 		return nil, nil, errCert
 	}
+
+	// Create shared HTTP client for outbound requests
+	var httpClientForRequests *http.Client
+	if caCert != nil {
+		httpClientForRequests = httpclient.NewClient(caCert)
+		slog.Info("Configured HTTP client with custom CA")
+	} else {
+		httpClientForRequests = http.DefaultClient
+	}
+
+	localRepo := repository.NewLocalRepository(cfg.CacheDir, mgr)
+	var upstreamRepos []repository.Repository
+	for _, u := range cfg.Upstreams {
+		upstreamRepos = append(upstreamRepos, repository.NewUpstreamRepository(u, httpClientForRequests))
+	}
+
+	fetchService := fetcher.NewService(upstreamRepos, httpClientForRequests)
+	casHandler := handler.NewCASHandler(localRepo, fetchService)
+
+	// Fallback Mux for explicit /fetch/ routes
+	fallbackMux := http.NewServeMux()
+	fallbackMux.Handle("/fetch/", casHandler)
+
+	// Setup Proxy Rules
+	// Learning rules first (detect and learn from metadata)
+	npmLearningRule := proxy.NewNpmLearningRule(database, httpClientForRequests)
+
+	// Regex rule: matches sha256 hashes in URL path
+	sha256Rule := proxy.NewRegexRule(
+		regexp.MustCompile(`sha256/(?P<hash>[a-f0-9]{64})`),
+		"sha256",
+	)
+
+	// Multi-hash DB rule: lookup all hashes ordered by priority
+	dbMultiRule := proxy.NewDBMultiRule(database)
+
+	rules := []proxy.Rule{npmLearningRule, sha256Rule, dbMultiRule}
 
 	// Initialize Proxy Server with fallback Mux
 	proxyServer := proxy.NewServer(localRepo, fetchService, rules, fallbackMux, caCert)

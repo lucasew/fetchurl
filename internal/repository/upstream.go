@@ -16,10 +16,13 @@ type UpstreamRepository struct {
 	Client  *http.Client
 }
 
-func NewUpstreamRepository(baseURL string) *UpstreamRepository {
+func NewUpstreamRepository(baseURL string, client *http.Client) *UpstreamRepository {
+	if client == nil {
+		client = http.DefaultClient
+	}
 	return &UpstreamRepository{
 		BaseURL: strings.TrimRight(baseURL, "/"),
-		Client:  http.DefaultClient,
+		Client:  client,
 	}
 }
 
