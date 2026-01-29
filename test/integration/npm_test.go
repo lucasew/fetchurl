@@ -173,7 +173,7 @@ func TestNPMIntegration(t *testing.T) {
 
 	// 6. Start Client (Node/NPM)
 	clientReq := testcontainers.ContainerRequest{
-		Image:    "node:18-alpine",
+		Image:    "node:18-bookworm-slim",
 		Networks: []string{networkName},
 		Files: []testcontainers.ContainerFile{
 			{

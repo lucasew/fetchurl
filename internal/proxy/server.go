@@ -65,16 +65,26 @@ func (s *Server) handleRequest(r *http.Request, ctx *goproxy.ProxyCtx) (*http.Re
 			algo, hash := res.Algo, res.Hash
 			slog.Debug("Trying hash", "algo", algo, "hash", hash)
 
+			// Check if already in cache (before fetching)
+			cacheReader, _, cacheErr := s.Local.Get(r.Context(), algo, hash)
+			isCacheHit := cacheErr == nil
+			if isCacheHit {
+				cacheReader.Close() // We'll get it again via GetOrFetch
+				slog.Info("Cache HIT", "url", r.URL.String(), "algo", algo, "hash", hash)
+			} else {
+				slog.Info("Cache MISS", "url", r.URL.String(), "algo", algo, "hash", hash)
+			}
+
 			fetchFn := func() (io.ReadCloser, int64, error) {
 				return s.Fetcher.Fetch(r.Context(), algo, hash, []string{r.URL.String()})
 			}
 
 			reader, size, err := s.Local.GetOrFetch(r.Context(), algo, hash, fetchFn)
 			if err != nil {
-				slog.Debug("Failed to fetch with hash, trying next", "algo", algo, "hash", hash, "error", err)
+				slog.Warn("Failed to fetch with hash, trying next", "algo", algo, "hash", hash, "error", err)
 				continue  // Try next hash
 			}
-			slog.Info("Proxy served from cache", "algo", algo, "hash", hash)
+			slog.Info("Proxy served", "url", r.URL.String(), "algo", algo, "hash", hash, "cache_hit", isCacheHit)
 			return r, s.newResponse(r, reader, size, algo, hash)
 		}
 
