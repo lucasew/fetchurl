@@ -52,7 +52,7 @@ func GenerateCA(certPath, keyPath string) error {
 	if err != nil {
 		return fmt.Errorf("failed to open %s for writing: %w", certPath, err)
 	}
-	defer certOut.Close()
+	defer func() { _ = certOut.Close() }()
 
 	if err := pem.Encode(certOut, &pem.Block{Type: "CERTIFICATE", Bytes: derBytes}); err != nil {
 		return fmt.Errorf("failed to write data to %s: %w", certPath, err)

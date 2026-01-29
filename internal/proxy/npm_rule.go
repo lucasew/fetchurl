@@ -47,7 +47,7 @@ func NewNpmLearningRule(database *db.DB) Rule {
 			slog.Debug("Failed to fetch NPM metadata", "url", u.String(), "error", err)
 			return nil  // Failed to fetch, let request pass through
 		}
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 
 		if resp.StatusCode != http.StatusOK {
 			slog.Debug("NPM metadata returned non-200 status", "url", u.String(), "status", resp.StatusCode)
@@ -72,7 +72,7 @@ func NewNpmLearningRule(database *db.DB) Rule {
 		bgCtx := context.Background()  // Use background context to avoid cancellation
 		for _, ver := range metadata.Versions {
 			if ver.Dist.Tarball != "" && ver.Dist.Shasum != "" {
-				err := database.Queries.InsertHash(bgCtx, db.InsertHashParams{
+				err := database.InsertHash(bgCtx, db.InsertHashParams{
 					Url:  ver.Dist.Tarball,
 					Hash: ver.Dist.Shasum,
 					Algo: "sha1",

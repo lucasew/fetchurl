@@ -190,6 +190,9 @@ func TestNPMIntegration(t *testing.T) {
 		Cmd: []string{"bash", "-c", `
 set -ex
 
+# Install ca-certificates package
+apt-get update && apt-get install -y ca-certificates
+
 # Update CA certificates
 update-ca-certificates
 

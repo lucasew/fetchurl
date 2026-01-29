@@ -16,15 +16,15 @@ func TestDBMultiRule(t *testing.T) {
 		t.Fatal(err)
 	}
 	dbPath := f.Name()
-	f.Close()
-	defer os.Remove(dbPath)
+	_ = f.Close()
+	defer func() { _ = os.Remove(dbPath) }()
 
 	// Initialize DB
 	database, err := db.Open(dbPath)
 	if err != nil {
 		t.Fatalf("Open() failed: %v", err)
 	}
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 
 	ctx := context.Background()
 

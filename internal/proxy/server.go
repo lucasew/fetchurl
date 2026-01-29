@@ -69,7 +69,7 @@ func (s *Server) handleRequest(r *http.Request, ctx *goproxy.ProxyCtx) (*http.Re
 			cacheReader, _, cacheErr := s.Local.Get(r.Context(), algo, hash)
 			isCacheHit := cacheErr == nil
 			if isCacheHit {
-				cacheReader.Close() // We'll get it again via GetOrFetch
+				_ = cacheReader.Close() // We'll get it again via GetOrFetch
 				slog.Info("Cache HIT", "url", r.URL.String(), "algo", algo, "hash", hash)
 			} else {
 				slog.Info("Cache MISS", "url", r.URL.String(), "algo", algo, "hash", hash)
