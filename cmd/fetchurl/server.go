@@ -45,6 +45,10 @@ var serverCmd = &cobra.Command{
 func init() {
 	rootCmd.AddCommand(serverCmd)
 
+	// Enable environment variable support with FETCHURL_ prefix
+	viper.SetEnvPrefix("FETCHURL")
+	viper.AutomaticEnv()
+
 	serverCmd.Flags().Int("port", 8080, "Port to run the server on")
 	serverCmd.Flags().String("cache-dir", "./cache", "Directory to store cached files")
 	serverCmd.Flags().Int64("max-cache-size", 1024*1024*1024, "Max cache size in bytes (default 1GB)")
@@ -64,6 +68,17 @@ func init() {
 	mustBindPFlag("ca-cert", serverCmd.Flags().Lookup("ca-cert"))
 	mustBindPFlag("ca-key", serverCmd.Flags().Lookup("ca-key"))
 	mustBindPFlag("upstream", serverCmd.Flags().Lookup("upstream"))
+
+	// Bind environment variables
+	viper.BindEnv("port", "FETCHURL_PORT")
+	viper.BindEnv("cache-dir", "FETCHURL_CACHE_DIR")
+	viper.BindEnv("max-cache-size", "FETCHURL_MAX_CACHE_SIZE")
+	viper.BindEnv("min-free-space", "FETCHURL_MIN_FREE_SPACE")
+	viper.BindEnv("eviction-interval", "FETCHURL_EVICTION_INTERVAL")
+	viper.BindEnv("eviction-strategy", "FETCHURL_EVICTION_STRATEGY")
+	viper.BindEnv("ca-cert", "FETCHURL_CA_CERT")
+	viper.BindEnv("ca-key", "FETCHURL_CA_KEY")
+	viper.BindEnv("upstream", "FETCHURL_UPSTREAM")
 }
 
 func mustBindPFlag(key string, flag *pflag.Flag) {

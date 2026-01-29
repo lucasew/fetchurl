@@ -178,17 +178,34 @@ func TestNPMIntegration(t *testing.T) {
 		Files: []testcontainers.ContainerFile{
 			{
 				HostFilePath:      caCertPath,
-				ContainerFilePath: "/tmp/ca.pem",
+				ContainerFilePath: "/usr/local/share/ca-certificates/fetchurl-proxy.crt",
 				FileMode:          0644,
 			},
 		},
 		Env: map[string]string{
-			"https_proxy":         "http://downstream:8080",
-			"http_proxy":          "http://downstream:8080",
-			"NODE_EXTRA_CA_CERTS": "/tmp/ca.pem",
+			"https_proxy": "http://downstream:8080",
+			"http_proxy":  "http://downstream:8080",
 		},
 		// Attempt to install a small package or specific one
-		Cmd:        []string{"sh", "-c", "npm install -g @lucasew/pesquisarr --verbose"},
+		Cmd: []string{"sh", "-c", `
+set -ex
+
+# Install ca-certificates (Alpine Linux)
+apk add --no-cache ca-certificates
+
+# Update system CA certificates
+update-ca-certificates
+
+# Create test directory
+mkdir -p /tmp/test-project
+cd /tmp/test-project
+
+# Initialize npm project
+npm init -y
+
+# Install express package through proxy
+npm install express --verbose
+`},
 		WaitingFor: wait.ForExit().WithExitTimeout(10 * time.Minute),
 	}
 

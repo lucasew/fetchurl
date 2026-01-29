@@ -118,6 +118,10 @@ func TestNPMWithSystemCA(t *testing.T) {
 		Cmd: []string{"bash", "-c", `
 set -ex
 
+# Install ca-certificates package (required for update-ca-certificates)
+apt-get update
+apt-get install -y ca-certificates
+
 # Install CA certificate into system truststore
 update-ca-certificates
 
