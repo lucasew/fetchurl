@@ -187,13 +187,10 @@ func TestNPMIntegration(t *testing.T) {
 			"http_proxy":  "http://downstream:8080",
 		},
 		// Attempt to install a small package or specific one
-		Cmd: []string{"sh", "-c", `
+		Cmd: []string{"bash", "-c", `
 set -ex
 
-# Install ca-certificates (Alpine Linux)
-apk add --no-cache ca-certificates
-
-# Update system CA certificates
+# Update CA certificates
 update-ca-certificates
 
 # Create test directory
