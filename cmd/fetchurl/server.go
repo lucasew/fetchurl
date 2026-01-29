@@ -53,6 +53,7 @@ func init() {
 	serverCmd.Flags().String("eviction-strategy", "lru", "Eviction strategy to use (lru)")
 	serverCmd.Flags().String("ca-cert", "", "CA certificate (path, PEM content, or hex)")
 	serverCmd.Flags().String("ca-key", "", "CA private key (path, PEM content, or hex)")
+	serverCmd.Flags().StringSlice("upstream", []string{}, "Upstream repository URLs")
 
 	mustBindPFlag("port", serverCmd.Flags().Lookup("port"))
 	mustBindPFlag("cache-dir", serverCmd.Flags().Lookup("cache-dir"))
@@ -62,6 +63,7 @@ func init() {
 	mustBindPFlag("eviction-strategy", serverCmd.Flags().Lookup("eviction-strategy"))
 	mustBindPFlag("ca-cert", serverCmd.Flags().Lookup("ca-cert"))
 	mustBindPFlag("ca-key", serverCmd.Flags().Lookup("ca-key"))
+	mustBindPFlag("upstream", serverCmd.Flags().Lookup("upstream"))
 }
 
 func mustBindPFlag(key string, flag *pflag.Flag) {

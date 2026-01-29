@@ -118,6 +118,11 @@ func NewServer(cfg Config) (*http.Server, func(), error) {
 	go mgr.Start(ctx)
 
 	// Setup DB
+	if err := os.MkdirAll(cfg.CacheDir, 0755); err != nil {
+		cancel()
+		return nil, nil, fmt.Errorf("failed to create cache directory: %w", err)
+	}
+
 	dbPath := filepath.Join(cfg.CacheDir, "links.db")
 	database, err := db.Open(dbPath)
 	if err != nil {

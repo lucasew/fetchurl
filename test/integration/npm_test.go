@@ -135,8 +135,8 @@ func TestNPMIntegration(t *testing.T) {
 	upstreamReq.Cmd = []string{
 		"server", // ENTRYPOINT is /app/fetchurl, so this is arg
 		"--port=8080",
-		"--ca-cert-hex=" + caCertHex,
-		"--ca-key-hex=" + caKeyHex,
+		"--ca-cert=" + caCertHex,
+		"--ca-key=" + caKeyHex,
 		"--cache-dir=/tmp/cache",
 	}
 
@@ -157,8 +157,8 @@ func TestNPMIntegration(t *testing.T) {
 		"server",
 		"--port=8080",
 		"--upstream=http://upstream:8080",
-		"--ca-cert-hex=" + caCertHex,
-		"--ca-key-hex=" + caKeyHex,
+		"--ca-cert=" + caCertHex,
+		"--ca-key=" + caKeyHex,
 		"--cache-dir=/tmp/cache",
 	}
 
