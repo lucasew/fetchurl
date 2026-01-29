@@ -56,7 +56,7 @@ func generateCA(certPath, keyPath string) error {
 	if err != nil {
 		return err
 	}
-	defer certOut.Close()
+	defer func() { _ = certOut.Close() }()
 	if err := pem.Encode(certOut, &pem.Block{Type: "CERTIFICATE", Bytes: derBytes}); err != nil {
 		return err
 	}
@@ -65,7 +65,7 @@ func generateCA(certPath, keyPath string) error {
 	if err != nil {
 		return err
 	}
-	defer keyOut.Close()
+	defer func() { _ = keyOut.Close() }()
 	privBytes := x509.MarshalPKCS1PrivateKey(priv)
 	if err := pem.Encode(keyOut, &pem.Block{Type: "RSA PRIVATE KEY", Bytes: privBytes}); err != nil {
 		return err
@@ -85,7 +85,7 @@ func TestNPMIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	caCertPath := filepath.Join(tmpDir, "ca.pem")
 	caKeyPath := filepath.Join(tmpDir, "ca-key.pem")
@@ -114,7 +114,7 @@ func TestNPMIntegration(t *testing.T) {
 		t.Logf("Failed to create network (expected in sandbox): %v", err)
 		return
 	}
-	defer net.Remove(ctx)
+	defer func() { _ = net.Remove(ctx) }()
 	networkName := net.Name
 
 	// 3. Define Container Request Base
@@ -147,7 +147,7 @@ func TestNPMIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer upstream.Terminate(ctx)
+	defer func() { _ = upstream.Terminate(ctx) }()
 
 	// 5. Start Downstream
 	downstreamReq := req
@@ -169,7 +169,7 @@ func TestNPMIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer downstream.Terminate(ctx)
+	defer func() { _ = downstream.Terminate(ctx) }()
 
 	// 6. Start Client (Node/NPM)
 	clientReq := testcontainers.ContainerRequest{
@@ -216,7 +216,7 @@ npm install express --verbose
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer client.Terminate(ctx)
+	defer func() { _ = client.Terminate(ctx) }()
 
 	// 7. Verify Results
 	state, err := client.State(ctx)
@@ -227,7 +227,7 @@ npm install express --verbose
 	// Print logs if failed
 	if state.ExitCode != 0 {
 		logs, _ := client.Logs(ctx)
-		io.Copy(os.Stdout, logs)
+		_, _ = io.Copy(os.Stdout, logs)
 		t.Fatalf("Client failed with exit code %d", state.ExitCode)
 	}
 

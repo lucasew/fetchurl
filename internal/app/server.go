@@ -199,7 +199,7 @@ func NewServer(cfg Config) (*http.Server, func(), error) {
 	}
 
 	cleanup := func() {
-		database.Close()
+		_ = database.Close()
 		cancel()
 	}
 

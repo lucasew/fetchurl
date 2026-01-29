@@ -31,7 +31,7 @@ func TestLocalRepository_GetOrFetch(t *testing.T) {
 		if err != nil {
 			t.Fatalf("GetOrFetch failed: %v", err)
 		}
-		defer rc.Close()
+		defer func() { _ = rc.Close() }()
 
 		if !fetchCalled {
 			t.Error("Fetcher was not called on cache miss")
@@ -58,7 +58,7 @@ func TestLocalRepository_GetOrFetch(t *testing.T) {
 		if err != nil {
 			t.Fatalf("GetOrFetch failed: %v", err)
 		}
-		defer rc.Close()
+		defer func() { _ = rc.Close() }()
 
 		if fetchCalled {
 			t.Error("Fetcher WAS called on cache hit")

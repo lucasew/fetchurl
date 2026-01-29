@@ -30,7 +30,7 @@ func TestNPMWithSystemCA(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	caCertPath := filepath.Join(tmpDir, "ca.crt")
 	caKeyPath := filepath.Join(tmpDir, "ca.key")
@@ -45,7 +45,7 @@ func TestNPMWithSystemCA(t *testing.T) {
 		t.Skipf("Docker not available (expected in some environments): %v", err)
 		return
 	}
-	defer net.Remove(ctx)
+	defer func() { _ = net.Remove(ctx) }()
 	networkName := net.Name
 
 	// 3. Start fetchurl proxy server
@@ -92,9 +92,9 @@ func TestNPMWithSystemCA(t *testing.T) {
 			// Print logs on test failure
 			logs, _ := proxyContainer.Logs(ctx)
 			fmt.Println("\n=== Proxy Container Logs ===")
-			io.Copy(os.Stdout, logs)
+			_, _ = io.Copy(os.Stdout, logs)
 		}
-		proxyContainer.Terminate(ctx)
+		_ = proxyContainer.Terminate(ctx)
 	}()
 
 	// 4. Start Node.js client with system-wide CA installation
@@ -157,8 +157,8 @@ echo "SUCCESS: NPM installation completed through proxy with system CA"
 		// Always print client logs for debugging
 		logs, _ := clientContainer.Logs(ctx)
 		fmt.Println("\n=== Client Container Logs ===")
-		io.Copy(os.Stdout, logs)
-		clientContainer.Terminate(ctx)
+		_, _ = io.Copy(os.Stdout, logs)
+		_ = clientContainer.Terminate(ctx)
 	}()
 
 	// 5. Verify client container completed successfully
@@ -196,7 +196,7 @@ echo "SUCCESS: NPM installation completed through proxy with system CA"
 	}
 
 	// 7. Verify proxy has cached SHA1 tarballs
-	exitCode, reader, err = proxyContainer.Exec(ctx, []string{
+	_, reader, err = proxyContainer.Exec(ctx, []string{
 		"sh", "-c", "ls -1 /cache/sha1 2>/dev/null | wc -l",
 	})
 	if err != nil {

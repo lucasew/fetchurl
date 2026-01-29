@@ -70,15 +70,21 @@ func init() {
 	mustBindPFlag("upstream", serverCmd.Flags().Lookup("upstream"))
 
 	// Bind environment variables
-	viper.BindEnv("port", "FETCHURL_PORT")
-	viper.BindEnv("cache-dir", "FETCHURL_CACHE_DIR")
-	viper.BindEnv("max-cache-size", "FETCHURL_MAX_CACHE_SIZE")
-	viper.BindEnv("min-free-space", "FETCHURL_MIN_FREE_SPACE")
-	viper.BindEnv("eviction-interval", "FETCHURL_EVICTION_INTERVAL")
-	viper.BindEnv("eviction-strategy", "FETCHURL_EVICTION_STRATEGY")
-	viper.BindEnv("ca-cert", "FETCHURL_CA_CERT")
-	viper.BindEnv("ca-key", "FETCHURL_CA_KEY")
-	viper.BindEnv("upstream", "FETCHURL_UPSTREAM")
+	mustBindEnv("port", "FETCHURL_PORT")
+	mustBindEnv("cache-dir", "FETCHURL_CACHE_DIR")
+	mustBindEnv("max-cache-size", "FETCHURL_MAX_CACHE_SIZE")
+	mustBindEnv("min-free-space", "FETCHURL_MIN_FREE_SPACE")
+	mustBindEnv("eviction-interval", "FETCHURL_EVICTION_INTERVAL")
+	mustBindEnv("eviction-strategy", "FETCHURL_EVICTION_STRATEGY")
+	mustBindEnv("ca-cert", "FETCHURL_CA_CERT")
+	mustBindEnv("ca-key", "FETCHURL_CA_KEY")
+	mustBindEnv("upstream", "FETCHURL_UPSTREAM")
+}
+
+func mustBindEnv(key, env string) {
+	if err := viper.BindEnv(key, env); err != nil {
+		panic(fmt.Sprintf("failed to bind env %q: %v", env, err))
+	}
 }
 
 func mustBindPFlag(key string, flag *pflag.Flag) {
