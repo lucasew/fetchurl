@@ -9,6 +9,7 @@ COPY . .
 RUN mise exec -- env CGO_ENABLED=0 go build -o fetchurl ./cmd/fetchurl
 
 FROM alpine:latest
+RUN apk add --no-cache ca-certificates
 WORKDIR /app
 COPY --from=builder /app/fetchurl /app/fetchurl
 ENTRYPOINT ["/app/fetchurl"]
