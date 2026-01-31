@@ -24,6 +24,7 @@ type Config struct {
 	MinFreeSpace     int64
 	EvictionInterval time.Duration
 	EvictionStrategy string
+	Upstreams        []string
 }
 
 func NewServer(cfg Config) (*http.Server, func(), error) {
@@ -73,18 +74,14 @@ func NewServer(cfg Config) (*http.Server, func(), error) {
 
 	localRepo := repository.NewLocalRepository(cfg.CacheDir, mgr)
 
-	casHandler := handler.NewCASHandler(localRepo, httpClientForRequests)
+	casHandler := handler.NewCASHandler(localRepo, httpClientForRequests, cfg.Upstreams)
 
 	mux := http.NewServeMux()
 	// Mux handling: /api/fetchurl/{algo}/{hash}
-	// StripPrefix removes /api/fetchurl.
-	// So handler sees /{algo}/{hash} which matches our expectation.
-	// Note: StripPrefix leaves the trailing slash if prefix matches.
-	// If path is /api/fetchurl/sha256/hash -> StripPrefix("/api/fetchurl") -> /sha256/hash.
 	mux.Handle("/api/fetchurl/", http.StripPrefix("/api/fetchurl", casHandler))
 
 	addr := fmt.Sprintf(":%d", cfg.Port)
-	slog.Info("Starting server (CAS)", "addr", addr, "cache_dir", cfg.CacheDir)
+	slog.Info("Starting server (CAS)", "addr", addr, "cache_dir", cfg.CacheDir, "upstreams", len(cfg.Upstreams))
 
 	server := &http.Server{
 		Addr:    addr,

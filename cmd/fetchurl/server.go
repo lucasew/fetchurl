@@ -23,6 +23,7 @@ var serverCmd = &cobra.Command{
 			MinFreeSpace:     viper.GetInt64("min-free-space"),
 			EvictionInterval: viper.GetDuration("eviction-interval"),
 			EvictionStrategy: viper.GetString("eviction-strategy"),
+			Upstreams:        viper.GetStringSlice("upstream"),
 		}
 
 		server, cleanup, err := app.NewServer(cfg)
@@ -52,6 +53,7 @@ func init() {
 	serverCmd.Flags().Int64("min-free-space", 0, "Min free disk space in bytes (if set, overrides max-cache-size)")
 	serverCmd.Flags().Duration("eviction-interval", time.Minute, "Interval to check for evictions")
 	serverCmd.Flags().String("eviction-strategy", "lru", "Eviction strategy to use (lru)")
+	serverCmd.Flags().StringSlice("upstream", []string{}, "Upstream fetchurl servers")
 
 	mustBindPFlag("port", serverCmd.Flags().Lookup("port"))
 	mustBindPFlag("cache-dir", serverCmd.Flags().Lookup("cache-dir"))
@@ -59,6 +61,7 @@ func init() {
 	mustBindPFlag("min-free-space", serverCmd.Flags().Lookup("min-free-space"))
 	mustBindPFlag("eviction-interval", serverCmd.Flags().Lookup("eviction-interval"))
 	mustBindPFlag("eviction-strategy", serverCmd.Flags().Lookup("eviction-strategy"))
+	mustBindPFlag("upstream", serverCmd.Flags().Lookup("upstream"))
 
 	// Bind environment variables
 	mustBindEnv("port", "FETCHURL_PORT")
@@ -67,6 +70,7 @@ func init() {
 	mustBindEnv("min-free-space", "FETCHURL_MIN_FREE_SPACE")
 	mustBindEnv("eviction-interval", "FETCHURL_EVICTION_INTERVAL")
 	mustBindEnv("eviction-strategy", "FETCHURL_EVICTION_STRATEGY")
+	mustBindEnv("upstream", "FETCHURL_UPSTREAM")
 }
 
 func mustBindEnv(key, env string) {

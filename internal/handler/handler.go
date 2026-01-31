@@ -16,18 +16,20 @@ import (
 )
 
 type CASHandler struct {
-	Local  *repository.LocalRepository
-	Client *http.Client
-	g      singleflight.Group
+	Local     *repository.LocalRepository
+	Client    *http.Client
+	Upstreams []string
+	g         singleflight.Group
 }
 
-func NewCASHandler(local *repository.LocalRepository, client *http.Client) *CASHandler {
+func NewCASHandler(local *repository.LocalRepository, client *http.Client, upstreams []string) *CASHandler {
 	if client == nil {
 		client = http.DefaultClient
 	}
 	return &CASHandler{
-		Local:  local,
-		Client: client,
+		Local:     local,
+		Client:    client,
+		Upstreams: upstreams,
 	}
 }
 
@@ -60,7 +62,24 @@ func (h *CASHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 2. Cache Miss -> Fetch & Stream
-	sources := h.parseSourceUrls(r.Header)
+
+	// Collect candidates
+	var sources []string
+
+	// Add configured upstreams first
+	for _, u := range h.Upstreams {
+		// Construct CAS URL for upstream
+		// Assume upstream is a base URL like http://cache.local:8080
+		// We need to append /api/fetchurl/{algo}/{hash}
+		// Ensure trailing slash handling
+		base := strings.TrimRight(u, "/")
+		sourceUrl := fmt.Sprintf("%s/api/fetchurl/%s/%s", base, algo, hash)
+		sources = append(sources, sourceUrl)
+	}
+
+	// Add dynamic sources from headers
+	sources = append(sources, h.parseSourceUrls(r.Header)...)
+
 	if len(sources) == 0 {
 		http.Error(w, "Not found and no X-Source-Urls provided", http.StatusNotFound)
 		return
@@ -133,20 +152,14 @@ func (h *CASHandler) tryFetchFromSource(ctx context.Context, w http.ResponseWrit
 	}
 
 	// Forward X-Source-Urls to allow daisy chaining
-	// (Note: we don't have the original full list here unless we pass it, but we only have current source string)
-	// We can pass the full list if needed, but for now simple forwarding of known sources is complex if we don't carry the list.
-	// The original implementation iterated and added *all* sources.
-	// Let's just add the current one as a simple heuristic or none?
-	// The spec says "daisy chain".
-	// Ideally we should pass all sources.
-	// But `tryFetchFromSource` signature is getting complicated.
-	// Let's just add the current source we are trying, assuming it might redirect or be a proxy itself?
-	// No, usually we want to tell the upstream about *other* alternatives.
-	// Let's skip forwarding for now to keep it simple and clean, unless strictly required.
-	// Or just pass `req.Header.Add("X-Source-Urls", source)` which doesn't make sense (telling source about itself).
-	// I'll skip forwarding in this refactor step to solve the lint issue first.
-	// Wait, I should preserve behavior.
-	// I'll assume `sources` list is not critical to forward recursively in this exact loop logic.
+	// We forward the *other* dynamic sources?
+	// Or simply forward what we got?
+	// For now, let's just forward the current source we are trying if it's dynamic?
+	// Actually, if we are calling an Upstream Server, we might want to tell IT about the original X-Source-Urls.
+	// But passing *all* of them (including the one we are calling) might loop?
+	// The loop protection is usually Max-Forwards or checking if we are in the list.
+	// Let's implement simple forwarding of known sources later if requested.
+	// For now, standard fetch.
 
 	resp, err := h.Client.Do(req)
 	if err != nil {
