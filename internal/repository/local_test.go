@@ -49,7 +49,9 @@ func TestLocalRepository(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Get failed: %v", err)
 		}
-		defer rc.Close()
+		defer func() {
+			_ = rc.Close()
+		}()
 
 		if size != int64(len(content)) {
 			t.Errorf("Expected size %d, got %d", len(content), size)
@@ -88,7 +90,7 @@ func TestLocalRepository(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		fmt.Fprintf(w, "test")
+		_, _ = fmt.Fprintf(w, "test")
 		// Not calling w.Close()
 		err = commit()
 		if err != nil {
@@ -96,7 +98,9 @@ func TestLocalRepository(t *testing.T) {
 		}
 		// Verify content
 		rc, _, _ := repo.Get(ctx, algo, hash2)
-		defer rc.Close()
+		defer func() {
+			_ = rc.Close()
+		}()
 		bytes, _ := io.ReadAll(rc)
 		if string(bytes) != "test" {
 			t.Errorf("Content mismatch")

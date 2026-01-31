@@ -102,11 +102,15 @@ func (h *CASHandler) serveFromCache(w http.ResponseWriter, r *http.Request, algo
 		http.Error(w, "Failed to retrieve from cache", http.StatusInternalServerError)
 		return
 	}
-	defer reader.Close()
+	defer func() {
+		_ = reader.Close()
+	}()
 
 	h.setCacheHeaders(w, algo, hash)
 	w.Header().Set("Content-Length", fmt.Sprintf("%d", size))
-	io.Copy(w, reader)
+	if _, err := io.Copy(w, reader); err != nil {
+		slog.Warn("Failed to copy from cache to response", "error", err)
+	}
 }
 
 func (h *CASHandler) fetchAndStream(ctx context.Context, w http.ResponseWriter, algo, hash string, sources []string, headersWritten *bool) error {
@@ -129,7 +133,9 @@ func (h *CASHandler) fetchAndStream(ctx context.Context, w http.ResponseWriter, 
 			slog.Warn("Failed to fetch from source", "url", source, "error", err)
 			continue
 		}
-		defer resp.Body.Close()
+		defer func() {
+			_ = resp.Body.Close()
+		}()
 
 		if resp.StatusCode != http.StatusOK {
 			slog.Warn("Source returned non-200", "url", source, "status", resp.StatusCode)
@@ -145,9 +151,9 @@ func (h *CASHandler) fetchAndStream(ctx context.Context, w http.ResponseWriter, 
 		}
 
 		defer func() {
-			tmpFile.Close()
+			_ = tmpFile.Close()
 			if f, ok := tmpFile.(*os.File); ok {
-				os.Remove(f.Name())
+				_ = os.Remove(f.Name())
 			}
 		}()
 
