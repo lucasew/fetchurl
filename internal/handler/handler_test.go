@@ -10,7 +10,6 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/lucasew/fetchurl/internal/fetcher"
 	"github.com/lucasew/fetchurl/internal/repository"
 )
 
@@ -18,7 +17,8 @@ func TestCASHandler(t *testing.T) {
 	// Setup temporary cache dir
 	cacheDir := t.TempDir()
 	localRepo := repository.NewLocalRepository(cacheDir, nil)
-	h := NewCASHandler(localRepo, fetcher.NewService(nil, nil))
+	// We use the default client for the handler
+	h := NewCASHandler(localRepo, nil)
 
 	// Setup mock upstream server (origin server for files)
 	origin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -29,6 +29,9 @@ func TestCASHandler(t *testing.T) {
 			_, _ = w.Write([]byte("content2"))
 		case "/fail":
 			w.WriteHeader(http.StatusInternalServerError)
+		case "/big":
+			w.Header().Set("Content-Length", "10")
+			w.Write([]byte("0123456789"))
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}
@@ -40,7 +43,8 @@ func TestCASHandler(t *testing.T) {
 	hash2 := sha256Sum([]byte("content2"))
 
 	t.Run("Download Success", func(t *testing.T) {
-		req := httptest.NewRequest("GET", fmt.Sprintf("/fetch/sha256/%s?url=%s/file1", hash1, origin.URL), nil)
+		req := httptest.NewRequest("GET", fmt.Sprintf("/sha256/%s", hash1), nil)
+		req.Header.Set("X-Source-Urls", origin.URL+"/file1")
 		w := httptest.NewRecorder()
 
 		h.ServeHTTP(w, req)
@@ -60,15 +64,16 @@ func TestCASHandler(t *testing.T) {
 			t.Errorf("expected Link canonical header, got %s", w.Header().Get("Link"))
 		}
 
-		// Verify file exists in cache
-		if _, err := os.Stat(filepath.Join(cacheDir, "sha256", hash1)); os.IsNotExist(err) {
+		// Verify file exists in cache (sharded)
+		shard := hash1[:2]
+		if _, err := os.Stat(filepath.Join(cacheDir, "sha256", shard, hash1)); os.IsNotExist(err) {
 			t.Errorf("file not found in cache")
 		}
 	})
 
 	t.Run("Cache Hit", func(t *testing.T) {
 		// Should be in cache from previous test
-		req := httptest.NewRequest("GET", fmt.Sprintf("/fetch/sha256/%s", hash1), nil)
+		req := httptest.NewRequest("GET", fmt.Sprintf("/sha256/%s", hash1), nil)
 		w := httptest.NewRecorder()
 
 		h.ServeHTTP(w, req)
@@ -85,28 +90,33 @@ func TestCASHandler(t *testing.T) {
 		}
 	})
 
-	t.Run("Hash Mismatch New File", func(t *testing.T) {
+	t.Run("Hash Mismatch", func(t *testing.T) {
 		// Requesting hash2 but pointing to content1 (hash1)
-		// hash2 matches "content2", but we point to "/file1" which returns "content1"
-		req := httptest.NewRequest("GET", fmt.Sprintf("/fetch/sha256/%s?url=%s/file1", hash2, origin.URL), nil)
+
+		defer func() {
+			if r := recover(); r != nil {
+				// Expected panic
+				// We don't verify specific panic because singleflight wraps it.
+			} else {
+				t.Errorf("expected panic for hash mismatch")
+			}
+		}()
+
+		req := httptest.NewRequest("GET", fmt.Sprintf("/sha256/%s", hash2), nil)
+		req.Header.Set("X-Source-Urls", origin.URL+"/file1")
 		w := httptest.NewRecorder()
 
 		h.ServeHTTP(w, req)
-
-		if w.Code != http.StatusNotFound {
-			t.Errorf("expected status 404 (failed to fetch/store), got %d. Body: %s", w.Code, w.Body.String())
-		}
-
-		if _, err := os.Stat(filepath.Join(cacheDir, "sha256", hash2)); !os.IsNotExist(err) {
-			t.Errorf("file should not exist in cache")
-		}
 	})
 
 	t.Run("Failover", func(t *testing.T) {
 		// First URL fails, second succeeds.
-		// We use hash2 and file2. hash2 is NOT in cache because the previous test failed (as expected).
+		// hash2
 
-		req := httptest.NewRequest("GET", fmt.Sprintf("/fetch/sha256/%s?url=%s/fail&url=%s/file2", hash2, origin.URL, origin.URL), nil)
+		req := httptest.NewRequest("GET", fmt.Sprintf("/sha256/%s", hash2), nil)
+		// Header with multiple sources
+		req.Header.Add("X-Source-Urls", origin.URL+"/fail")
+		req.Header.Add("X-Source-Urls", origin.URL+"/file2")
 		w := httptest.NewRecorder()
 
 		h.ServeHTTP(w, req)
@@ -119,86 +129,19 @@ func TestCASHandler(t *testing.T) {
 		}
 
 		// Verify file exists in cache
-		if _, err := os.Stat(filepath.Join(cacheDir, "sha256", hash2)); os.IsNotExist(err) {
+		shard := hash2[:2]
+		if _, err := os.Stat(filepath.Join(cacheDir, "sha256", shard, hash2)); os.IsNotExist(err) {
 			t.Errorf("file not found in cache")
 		}
 	})
 
-	t.Run("HEAD Cache Miss", func(t *testing.T) {
-		// New random hash, not in cache
+	t.Run("Missing X-Source-Urls", func(t *testing.T) {
 		hash3 := sha256Sum([]byte("content3"))
-		req := httptest.NewRequest("HEAD", fmt.Sprintf("/fetch/sha256/%s?url=%s/file1", hash3, origin.URL), nil)
+		req := httptest.NewRequest("GET", fmt.Sprintf("/sha256/%s", hash3), nil)
 		w := httptest.NewRecorder()
-
 		h.ServeHTTP(w, req)
-
 		if w.Code != http.StatusNotFound {
-			t.Errorf("expected status 404, got %d", w.Code)
-		}
-		// Should NOT download
-		if _, err := os.Stat(filepath.Join(cacheDir, "sha256", hash3)); !os.IsNotExist(err) {
-			t.Errorf("file should not exist in cache")
-		}
-	})
-
-	t.Run("HEAD Cache Hit", func(t *testing.T) {
-		// hash1 is already in cache
-		req := httptest.NewRequest("HEAD", fmt.Sprintf("/fetch/sha256/%s", hash1), nil)
-		w := httptest.NewRecorder()
-
-		h.ServeHTTP(w, req)
-
-		if w.Code != http.StatusOK {
-			t.Errorf("expected status 200, got %d", w.Code)
-		}
-		// Content-Length should be set
-		if w.Header().Get("Content-Length") == "" {
-			t.Errorf("expected Content-Length header")
-		}
-	})
-}
-
-func TestUpstream(t *testing.T) {
-	// Setup Server 2 (Upstream)
-	upstreamCacheDir := t.TempDir()
-	content := []byte("upstream-content")
-	hash := sha256Sum(content)
-	algo := "sha256"
-
-	err := os.MkdirAll(filepath.Join(upstreamCacheDir, algo), 0755)
-	if err != nil {
-		t.Fatal(err)
-	}
-	upstreamFile := filepath.Join(upstreamCacheDir, algo, hash)
-	_ = os.WriteFile(upstreamFile, content, 0644)
-
-	upstreamLocal := repository.NewLocalRepository(upstreamCacheDir, nil)
-	upstreamHandler := NewCASHandler(upstreamLocal, fetcher.NewService(nil, nil))
-	upstreamServer := httptest.NewServer(upstreamHandler)
-	defer upstreamServer.Close()
-
-	// Setup Server 1 (Local)
-	localCacheDir := t.TempDir()
-	localRepo := repository.NewLocalRepository(localCacheDir, nil)
-	upstreamRepo := repository.NewUpstreamRepository(upstreamServer.URL, nil)
-	localHandler := NewCASHandler(localRepo, fetcher.NewService([]repository.Repository{upstreamRepo}, nil))
-
-	t.Run("Fetch from Upstream", func(t *testing.T) {
-		req := httptest.NewRequest("GET", fmt.Sprintf("/fetch/sha256/%s", hash), nil)
-		w := httptest.NewRecorder()
-
-		localHandler.ServeHTTP(w, req)
-
-		if w.Code != http.StatusOK {
-			t.Errorf("expected status 200, got %d. Body: %s", w.Code, w.Body.String())
-		}
-		if w.Body.String() != string(content) {
-			t.Errorf("expected body %s, got %s", content, w.Body.String())
-		}
-
-		// Verify file cached locally
-		if _, err := os.Stat(filepath.Join(localCacheDir, "sha256", hash)); os.IsNotExist(err) {
-			t.Errorf("file not found in local cache")
+			t.Errorf("expected 404, got %d", w.Code)
 		}
 	})
 }

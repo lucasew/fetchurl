@@ -2,26 +2,18 @@ package app
 
 import (
 	"context"
-	"crypto/tls"
-	"encoding/hex"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
-	"path/filepath"
-	"regexp"
 	"time"
 
-	"github.com/lucasew/fetchurl/internal/db"
 	"github.com/lucasew/fetchurl/internal/eviction"
 	_ "github.com/lucasew/fetchurl/internal/eviction/lru"
 	"github.com/lucasew/fetchurl/internal/eviction/policy"
 	"github.com/lucasew/fetchurl/internal/eviction/policy/maxsize"
 	"github.com/lucasew/fetchurl/internal/eviction/policy/minfree"
-	"github.com/lucasew/fetchurl/internal/fetcher"
 	"github.com/lucasew/fetchurl/internal/handler"
-	"github.com/lucasew/fetchurl/internal/httpclient"
-	"github.com/lucasew/fetchurl/internal/proxy"
 	"github.com/lucasew/fetchurl/internal/repository"
 )
 
@@ -32,53 +24,6 @@ type Config struct {
 	MinFreeSpace     int64
 	EvictionInterval time.Duration
 	EvictionStrategy string
-	Upstreams        []string
-	CaCert           string
-	CaKey            string
-}
-
-// loadCAContent resolves the CA content from path, hex, or raw string.
-func loadCAContent(input string) ([]byte, error) {
-	if input == "" {
-		return nil, nil
-	}
-
-	// 1. Try file path (naive check: if file exists)
-	// Note: If input is a path that doesn't exist but is meant to be content, this might fail or be skipped.
-	// However, usually paths are short and content is long (PEM).
-	// Let's rely on standard practice: if it looks like PEM (contains -----BEGIN), treat as content.
-	// If it is hex (no PEM headers, only hex chars), treat as hex.
-	// Else try file.
-
-	// Check for PEM
-	if regexp.MustCompile(`-----BEGIN`).MatchString(input) {
-		return []byte(input), nil
-	}
-
-	// Check for Hex
-	// Hex string usually doesn't contain spaces/newlines if passed via cli/env correctly,
-	// but might have them if copy-pasted. Let's assume strict hex for now or sanitized.
-	// A simple check: if it decodes successfully as hex and is long enough.
-	// But "deadbeef" is valid hex and also a valid file path potentially.
-	// Let's prioritize file if it exists.
-
-	// Try Hex decode
-	// Prioritize hex if it looks like hex (no file path separators and valid hex)
-	// This avoids ambiguity if a file named "deadbeef" exists but we meant content,
-	// but generally file paths contain / or .
-	if !regexp.MustCompile(`[/\\]`).MatchString(input) {
-		if bytes, err := hex.DecodeString(input); err == nil && len(bytes) > 0 {
-			return bytes, nil
-		}
-	}
-
-	// Try reading file
-	if _, err := os.Stat(input); err == nil {
-		return os.ReadFile(input)
-	}
-
-	// Fallback: treat as raw bytes (though likely invalid if not PEM)
-	return []byte(input), nil
 }
 
 func NewServer(cfg Config) (*http.Server, func(), error) {
@@ -118,98 +63,35 @@ func NewServer(cfg Config) (*http.Server, func(), error) {
 	// Start eviction manager
 	go mgr.Start(ctx)
 
-	// Setup DB
 	if err := os.MkdirAll(cfg.CacheDir, 0755); err != nil {
 		cancel()
 		return nil, nil, fmt.Errorf("failed to create cache directory: %w", err)
 	}
 
-	dbPath := filepath.Join(cfg.CacheDir, "links.db")
-	database, err := db.Open(dbPath)
-	if err != nil {
-		cancel()
-		return nil, nil, fmt.Errorf("failed to open database at %s: %w", dbPath, err)
-	}
-
-	var caCert *tls.Certificate
-	var errCert error
-
-	if cfg.CaCert != "" && cfg.CaKey != "" {
-		slog.Info("Loading CA certificate")
-		certBytes, err := loadCAContent(cfg.CaCert)
-		if err != nil {
-			errCert = fmt.Errorf("failed to load CA cert: %w", err)
-		}
-		keyBytes, err := loadCAContent(cfg.CaKey)
-		if err != nil {
-			errCert = fmt.Errorf("failed to load CA key: %w", err)
-		}
-
-		if errCert == nil {
-			cert, err := tls.X509KeyPair(certBytes, keyBytes)
-			if err != nil {
-				errCert = fmt.Errorf("failed to parse CA keypair: %w", err)
-			} else {
-				caCert = &cert
-			}
-		}
-	}
-
-	if errCert != nil {
-		cancel()
-		return nil, nil, errCert
-	}
-
 	// Create shared HTTP client for outbound requests
-	var httpClientForRequests *http.Client
-	if caCert != nil {
-		httpClientForRequests = httpclient.NewClient(caCert)
-		slog.Info("Configured HTTP client with custom CA")
-	} else {
-		httpClientForRequests = http.DefaultClient
-	}
+	httpClientForRequests := http.DefaultClient
 
 	localRepo := repository.NewLocalRepository(cfg.CacheDir, mgr)
-	var upstreamRepos []repository.Repository
-	for _, u := range cfg.Upstreams {
-		upstreamRepos = append(upstreamRepos, repository.NewUpstreamRepository(u, httpClientForRequests))
-	}
 
-	fetchService := fetcher.NewService(upstreamRepos, httpClientForRequests)
-	casHandler := handler.NewCASHandler(localRepo, fetchService)
+	casHandler := handler.NewCASHandler(localRepo, httpClientForRequests)
 
-	// Fallback Mux for explicit /fetch/ routes
-	fallbackMux := http.NewServeMux()
-	fallbackMux.Handle("/fetch/", casHandler)
-
-	// Setup Proxy Rules
-	// Learning rules first (detect and learn from metadata)
-	npmLearningRule := proxy.NewNpmLearningRule(database, httpClientForRequests)
-
-	// Regex rule: matches sha256 hashes in URL path
-	sha256Rule := proxy.NewRegexRule(
-		regexp.MustCompile(`sha256/(?P<hash>[a-f0-9]{64})`),
-		"sha256",
-	)
-
-	// Multi-hash DB rule: lookup all hashes ordered by priority
-	dbMultiRule := proxy.NewDBMultiRule(database)
-
-	rules := []proxy.Rule{npmLearningRule, sha256Rule, dbMultiRule}
-
-	// Initialize Proxy Server with fallback Mux
-	proxyServer := proxy.NewServer(localRepo, fetchService, rules, fallbackMux, caCert)
+	mux := http.NewServeMux()
+	// Mux handling: /api/fetchurl/{algo}/{hash}
+	// StripPrefix removes /api/fetchurl.
+	// So handler sees /{algo}/{hash} which matches our expectation.
+	// Note: StripPrefix leaves the trailing slash if prefix matches.
+	// If path is /api/fetchurl/sha256/hash -> StripPrefix("/api/fetchurl") -> /sha256/hash.
+	mux.Handle("/api/fetchurl/", http.StripPrefix("/api/fetchurl", casHandler))
 
 	addr := fmt.Sprintf(":%d", cfg.Port)
-	slog.Info("Starting server (Proxy + CAS)", "addr", addr, "cache_dir", cfg.CacheDir, "db_path", dbPath)
+	slog.Info("Starting server (CAS)", "addr", addr, "cache_dir", cfg.CacheDir)
 
 	server := &http.Server{
 		Addr:    addr,
-		Handler: proxyServer.Proxy,
+		Handler: mux,
 	}
 
 	cleanup := func() {
-		_ = database.Close()
 		cancel()
 	}
 

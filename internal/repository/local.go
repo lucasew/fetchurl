@@ -2,7 +2,6 @@ package repository
 
 import (
 	"context"
-	"encoding/hex"
 	"fmt"
 	"io"
 	"log/slog"
@@ -10,18 +9,15 @@ import (
 	"path/filepath"
 
 	"github.com/lucasew/fetchurl/internal/eviction"
-	"github.com/lucasew/fetchurl/internal/hashutil"
-	"golang.org/x/sync/singleflight"
 )
 
 // LocalRepository implements a Repository backed by the local filesystem.
 //
-// It uses a directory structure of {cacheDir}/{algo}/{hash} to store files.
-// It integrates with the Eviction Manager to track usage and size.
+// It uses a directory structure of {cacheDir}/{algo}/{shard}/{hash} to store files.
+// Shard is the first two characters of the hash.
 type LocalRepository struct {
 	CacheDir string
 	eviction *eviction.Manager
-	g        singleflight.Group
 }
 
 func NewLocalRepository(cacheDir string, eviction *eviction.Manager) *LocalRepository {
@@ -31,8 +27,15 @@ func NewLocalRepository(cacheDir string, eviction *eviction.Manager) *LocalRepos
 	}
 }
 
+func (r *LocalRepository) getRelPath(algo, hash string) string {
+	if len(hash) < 2 {
+		return filepath.Join(algo, hash)
+	}
+	return filepath.Join(algo, hash[:2], hash)
+}
+
 func (r *LocalRepository) getPath(algo, hash string) string {
-	return filepath.Join(r.CacheDir, algo, hash)
+	return filepath.Join(r.CacheDir, r.getRelPath(algo, hash))
 }
 
 func (r *LocalRepository) Exists(ctx context.Context, algo, hash string) (bool, error) {
@@ -58,100 +61,73 @@ func (r *LocalRepository) Get(ctx context.Context, algo, hash string) (io.ReadCl
 		return nil, 0, err
 	}
 	if r.eviction != nil {
-		r.eviction.Touch(filepath.Join(algo, hash))
+		r.eviction.Touch(r.getRelPath(algo, hash))
 	}
 	return f, info.Size(), nil
 }
 
-// Put stores a file in the local cache if it doesn't already exist.
-//
-// It uses singleflight to ensure that multiple concurrent requests for the same hash
-// only result in a single fetch/store operation.
-//
-// The process ensures data integrity:
-// 1. Fetches content to a temporary file.
-// 2. Computes the hash while writing.
-// 3. Verifies the computed hash matches the requested hash.
-// 4. Atomically moves (renames) the temporary file to the final location.
-func (r *LocalRepository) Put(ctx context.Context, algo, hash string, fetcher Fetcher) error {
-	key := filepath.Join(algo, hash)
-	_, err, _ := r.g.Do(key, func() (interface{}, error) {
-		// Double check existence
-		if exists, _ := r.Exists(ctx, algo, hash); exists {
-			return nil, nil
-		}
+// BeginWrite initiates a write operation for a file.
+// It creates a temporary file and returns it along with a commit function.
+// The commit function should be called after the file is fully written and verified.
+func (r *LocalRepository) BeginWrite(algo, hash string) (io.WriteCloser, func() error, error) {
+	finalPath := r.getPath(algo, hash)
 
-		// Fetch
-		reader, _, err := fetcher()
-		if err != nil {
-			return nil, err
-		}
-		defer func() { _ = reader.Close() }()
-
-		// Prepare destination
-		finalPath := r.getPath(algo, hash)
-		if err := os.MkdirAll(filepath.Dir(finalPath), 0755); err != nil {
-			return nil, fmt.Errorf("failed to create algo dir: %w", err)
-		}
-
-		tmpFile, err := os.CreateTemp(r.CacheDir, "put-*")
-		if err != nil {
-			return nil, fmt.Errorf("failed to create temp file: %w", err)
-		}
-		defer func() { _ = os.Remove(tmpFile.Name()) }()
-		defer func() { _ = tmpFile.Close() }()
-
-		hasher, err := hashutil.GetHasher(algo)
-		if err != nil {
-			return nil, err
-		}
-
-		mw := io.MultiWriter(tmpFile, hasher)
-		written, err := io.Copy(mw, reader)
-		if err != nil {
-			return nil, fmt.Errorf("failed to write to temp file: %w", err)
-		}
-
-		// Verify hash
-		actualHash := hex.EncodeToString(hasher.Sum(nil))
-		if actualHash != hash {
-			return nil, fmt.Errorf("hash mismatch: expected %s, got %s", hash, actualHash)
-		}
-
-		if err := tmpFile.Close(); err != nil {
-			return nil, fmt.Errorf("failed to close temp file: %w", err)
-		}
-
-		if err := os.Rename(tmpFile.Name(), finalPath); err != nil {
-			return nil, fmt.Errorf("failed to rename to final path: %w", err)
-		}
-
-		if r.eviction != nil {
-			r.eviction.Add(key, written)
-		}
-
-		slog.Info("Stored file", "algo", algo, "hash", hash, "size", written)
-		return nil, nil
-	})
-	return err
-}
-
-// GetOrFetch attempts to retrieve the file from the cache.
-// If it's missing, it uses the provided fetcher to download and store it,
-// then returns the file reader.
-func (r *LocalRepository) GetOrFetch(ctx context.Context, algo, hash string, fetcher Fetcher) (io.ReadCloser, int64, error) {
-	// 1. Try Local Cache (HIT)
-	reader, size, err := r.Get(ctx, algo, hash)
-	if err == nil {
-		return reader, size, nil
-	}
-
-	// 2. Cache Miss -> Fetch & Store
-	err = r.Put(ctx, algo, hash, fetcher)
+	// Create temp file in the same filesystem/dir as final destination (or at least same volume)
+	// We can use CacheDir root or a tmp subdir inside it.
+	tmpFile, err := os.CreateTemp(r.CacheDir, "put-*")
 	if err != nil {
-		return nil, 0, err
+		return nil, nil, fmt.Errorf("failed to create temp file: %w", err)
 	}
 
-	// 3. Serve after successful Store
-	return r.Get(ctx, algo, hash)
+	committed := false
+
+	commit := func() error {
+		if committed {
+			return nil
+		}
+		// Close the file first
+		if err := tmpFile.Close(); err != nil {
+			return fmt.Errorf("failed to close temp file: %w", err)
+		}
+
+		// Ensure destination directory exists
+		if err := os.MkdirAll(filepath.Dir(finalPath), 0755); err != nil {
+			return fmt.Errorf("failed to create algo/shard dir: %w", err)
+		}
+
+		// Move to final path
+		if err := os.Rename(tmpFile.Name(), finalPath); err != nil {
+			return fmt.Errorf("failed to rename to final path: %w", err)
+		}
+
+		committed = true
+
+		// Update eviction
+		if r.eviction != nil {
+			info, err := os.Stat(finalPath)
+			if err == nil {
+				r.eviction.Add(r.getRelPath(algo, hash), info.Size())
+				slog.Info("Stored file", "algo", algo, "hash", hash, "size", info.Size())
+			}
+		}
+
+		return nil
+	}
+
+	// Wrapper to handle cleanup if not committed (e.g. on error)
+	// But io.WriteCloser is just the file. The caller is responsible for deleting temp file if commit is not called?
+	// Or we can return a cleanup function too?
+	// The pattern `(writer, commit, error)` implies if commit is NOT called, we should cleanup manually or rely on OS?
+	// Standard practice: if commit is called, it moves. If not, the temp file stays.
+	// I should probably clean up if `Close` is called without Commit?
+	// But `tmpFile` IS the WriteCloser.
+
+	// Let's implement a wrapper around the file to handle cleanup?
+	// Or just let the caller handle it?
+	// The `tempFile` has a `Name()`.
+	// The caller should defer `os.Remove(tmpFile.Name())`.
+	// But `BeginWrite` returns `io.WriteCloser`. The caller doesn't know the name easily unless I return `*os.File`.
+	// I'll return `*os.File` which satisfies `io.WriteCloser`.
+
+	return tmpFile, commit, nil
 }

@@ -2,40 +2,55 @@ package repository
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
+	"fmt"
 	"io"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
 
-func TestLocalRepository_GetOrFetch(t *testing.T) {
+func TestLocalRepository(t *testing.T) {
 	cacheDir := t.TempDir()
 	repo := NewLocalRepository(cacheDir, nil)
 	ctx := context.Background()
 	algo := "sha256"
+	hash := "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855" // Empty string hash
+	content := ""
 
-	content := "test content"
-	h := sha256.New()
-	h.Write([]byte(content))
-	hash := hex.EncodeToString(h.Sum(nil))
-
-	t.Run("Cache Miss Success", func(t *testing.T) {
-		fetchCalled := false
-		fetcher := func() (io.ReadCloser, int64, error) {
-			fetchCalled = true
-			return io.NopCloser(strings.NewReader(content)), int64(len(content)), nil
-		}
-
-		rc, size, err := repo.GetOrFetch(ctx, algo, hash, fetcher)
+	t.Run("BeginWrite and Commit", func(t *testing.T) {
+		w, commit, err := repo.BeginWrite(algo, hash)
 		if err != nil {
-			t.Fatalf("GetOrFetch failed: %v", err)
+			t.Fatalf("BeginWrite failed: %v", err)
 		}
-		defer func() { _ = rc.Close() }()
 
-		if !fetchCalled {
-			t.Error("Fetcher was not called on cache miss")
+		// Write content
+		_, err = io.Copy(w, strings.NewReader(content))
+		if err != nil {
+			t.Fatalf("Write failed: %v", err)
 		}
+
+		// Commit
+		err = commit()
+		if err != nil {
+			t.Fatalf("Commit failed: %v", err)
+		}
+
+		// Verify file exists in sharded path
+		shard := hash[:2]
+		expectedPath := filepath.Join(cacheDir, algo, shard, hash)
+		if _, err := os.Stat(expectedPath); os.IsNotExist(err) {
+			t.Errorf("File not found at %s", expectedPath)
+		}
+	})
+
+	t.Run("Get Success", func(t *testing.T) {
+		rc, size, err := repo.Get(ctx, algo, hash)
+		if err != nil {
+			t.Fatalf("Get failed: %v", err)
+		}
+		defer rc.Close()
+
 		if size != int64(len(content)) {
 			t.Errorf("Expected size %d, got %d", len(content), size)
 		}
@@ -46,53 +61,45 @@ func TestLocalRepository_GetOrFetch(t *testing.T) {
 		}
 	})
 
-	t.Run("Cache Hit", func(t *testing.T) {
-		// File should already be there from previous test
-		fetchCalled := false
-		fetcher := func() (io.ReadCloser, int64, error) {
-			fetchCalled = true
-			return io.NopCloser(strings.NewReader("")), 0, nil
-		}
-
-		rc, size, err := repo.GetOrFetch(ctx, algo, hash, fetcher)
+	t.Run("Exists Success", func(t *testing.T) {
+		exists, err := repo.Exists(ctx, algo, hash)
 		if err != nil {
-			t.Fatalf("GetOrFetch failed: %v", err)
+			t.Fatalf("Exists failed: %v", err)
 		}
-		defer func() { _ = rc.Close() }()
-
-		if fetchCalled {
-			t.Error("Fetcher WAS called on cache hit")
-		}
-		if size != int64(len(content)) {
-			t.Errorf("Expected size %d, got %d", len(content), size)
+		if !exists {
+			t.Error("Exists returned false")
 		}
 	})
 
-	t.Run("Fetch Error", func(t *testing.T) {
-		newHash := "0000000000000000000000000000000000000000000000000000000000000000"
-		fetcher := func() (io.ReadCloser, int64, error) {
-			return nil, 0, io.ErrUnexpectedEOF
+	t.Run("Exists Fail", func(t *testing.T) {
+		exists, err := repo.Exists(ctx, algo, "badhash")
+		if err != nil {
+			t.Fatalf("Exists failed: %v", err)
 		}
-
-		_, _, err := repo.GetOrFetch(ctx, algo, newHash, fetcher)
-		if err != io.ErrUnexpectedEOF {
-			t.Errorf("Expected ErrUnexpectedEOF, got %v", err)
+		if exists {
+			t.Error("Exists returned true for bad hash")
 		}
 	})
 
-    t.Run("Hash Mismatch", func(t *testing.T) {
-        // Requesting a hash, but fetcher returns content that doesn't match
-        reqHash := "1111111111111111111111111111111111111111111111111111111111111111"
-		fetcher := func() (io.ReadCloser, int64, error) {
-			return io.NopCloser(strings.NewReader(content)), int64(len(content)), nil
+	t.Run("Commit without Close", func(t *testing.T) {
+		// Test that commit closes the writer if not closed
+		hash2 := "deadbeef"
+		w, commit, err := repo.BeginWrite(algo, hash2)
+		if err != nil {
+			t.Fatal(err)
 		}
-
-        _, _, err := repo.GetOrFetch(ctx, algo, reqHash, fetcher)
-        if err == nil {
-            t.Error("Expected error on hash mismatch, got nil")
-        }
-        if !strings.Contains(err.Error(), "hash mismatch") {
-             t.Errorf("Expected 'hash mismatch' error, got %v", err)
-        }
-    })
+		fmt.Fprintf(w, "test")
+		// Not calling w.Close()
+		err = commit()
+		if err != nil {
+			t.Fatalf("Commit failed when not closed: %v", err)
+		}
+		// Verify content
+		rc, _, _ := repo.Get(ctx, algo, hash2)
+		defer rc.Close()
+		bytes, _ := io.ReadAll(rc)
+		if string(bytes) != "test" {
+			t.Errorf("Content mismatch")
+		}
+	})
 }
