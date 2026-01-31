@@ -1,10 +1,12 @@
 [tools]
 go = "1.25.6"
 "go:golang.org/x/tools/gopls" = "0.21.0"
-golangci-lint = "2.8.0"
-actionlint = "1.7.10"
+golangci-lint = "1.64.6"
+actionlint = "1.7.7"
 node = "22.13.0"
-"github:sqlc-dev/sqlc" = "1.30.0"
+"github:sqlc-dev/sqlc" = "1.28.0"
+yamllint = "1.35.1"
+hadolint = "2.12.0"
 
 [tasks."lint:go"]
 run = "golangci-lint run ./..."
@@ -13,6 +15,18 @@ description = "Lint Go code"
 [tasks."lint:md"]
 run = "npx markdownlint-cli2 \"**/*.md\" \"#node_modules\""
 description = "Lint Markdown files"
+
+[tasks."lint:yaml"]
+run = "yamllint ."
+description = "Lint YAML files"
+
+[tasks."lint:action"]
+run = "actionlint"
+description = "Lint GitHub Actions"
+
+[tasks."lint:docker"]
+run = "hadolint Dockerfile"
+description = "Lint Dockerfile"
 
 [tasks.lint]
 depends = ["lint:*"]
@@ -30,10 +44,14 @@ description = "Format all code"
 run = "go test -v ./..."
 description = "Run tests"
 
+[tasks.build]
+run = "go build -o dist/fetchurl ./cmd/fetchurl"
+description = "Build binary"
+
 [tasks.ci]
 depends = ["lint", "test"]
 description = "Run CI pipeline"
 
 [tasks]
 codegen = "sqlc generate"
-install = "go get ./..."
+install = "go mod download"
