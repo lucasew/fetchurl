@@ -24,10 +24,8 @@ var serverCmd = &cobra.Command{
 			EvictionInterval: viper.GetDuration("eviction-interval"),
 			EvictionStrategy: viper.GetString("eviction-strategy"),
 			Upstreams:        viper.GetStringSlice("upstream"),
-			CaCertPath:       viper.GetString("ca-cert"),
-			CaKeyPath:        viper.GetString("ca-key"),
-			CaCertContent:    viper.GetString("ca-cert-content"),
-			CaKeyContent:     viper.GetString("ca-key-content"),
+			CaCert: viper.GetString("ca-cert"),
+			CaKey:  viper.GetString("ca-key"),
 		}
 
 		server, cleanup, err := app.NewServer(cfg)
@@ -47,16 +45,19 @@ var serverCmd = &cobra.Command{
 func init() {
 	rootCmd.AddCommand(serverCmd)
 
+	// Enable environment variable support with FETCHURL_ prefix
+	viper.SetEnvPrefix("FETCHURL")
+	viper.AutomaticEnv()
+
 	serverCmd.Flags().Int("port", 8080, "Port to run the server on")
 	serverCmd.Flags().String("cache-dir", "./cache", "Directory to store cached files")
 	serverCmd.Flags().Int64("max-cache-size", 1024*1024*1024, "Max cache size in bytes (default 1GB)")
 	serverCmd.Flags().Int64("min-free-space", 0, "Min free disk space in bytes (if set, overrides max-cache-size)")
 	serverCmd.Flags().Duration("eviction-interval", time.Minute, "Interval to check for evictions")
 	serverCmd.Flags().String("eviction-strategy", "lru", "Eviction strategy to use (lru)")
-	serverCmd.Flags().String("ca-cert", "", "Path to CA certificate")
-	serverCmd.Flags().String("ca-key", "", "Path to CA private key")
-	serverCmd.Flags().String("ca-cert-content", "", "Content of CA certificate (PEM)")
-	serverCmd.Flags().String("ca-key-content", "", "Content of CA private key (PEM)")
+	serverCmd.Flags().String("ca-cert", "", "CA certificate (path, PEM content, or hex)")
+	serverCmd.Flags().String("ca-key", "", "CA private key (path, PEM content, or hex)")
+	serverCmd.Flags().StringSlice("upstream", []string{}, "Upstream repository URLs")
 
 	mustBindPFlag("port", serverCmd.Flags().Lookup("port"))
 	mustBindPFlag("cache-dir", serverCmd.Flags().Lookup("cache-dir"))
@@ -66,8 +67,24 @@ func init() {
 	mustBindPFlag("eviction-strategy", serverCmd.Flags().Lookup("eviction-strategy"))
 	mustBindPFlag("ca-cert", serverCmd.Flags().Lookup("ca-cert"))
 	mustBindPFlag("ca-key", serverCmd.Flags().Lookup("ca-key"))
-	mustBindPFlag("ca-cert-content", serverCmd.Flags().Lookup("ca-cert-content"))
-	mustBindPFlag("ca-key-content", serverCmd.Flags().Lookup("ca-key-content"))
+	mustBindPFlag("upstream", serverCmd.Flags().Lookup("upstream"))
+
+	// Bind environment variables
+	mustBindEnv("port", "FETCHURL_PORT")
+	mustBindEnv("cache-dir", "FETCHURL_CACHE_DIR")
+	mustBindEnv("max-cache-size", "FETCHURL_MAX_CACHE_SIZE")
+	mustBindEnv("min-free-space", "FETCHURL_MIN_FREE_SPACE")
+	mustBindEnv("eviction-interval", "FETCHURL_EVICTION_INTERVAL")
+	mustBindEnv("eviction-strategy", "FETCHURL_EVICTION_STRATEGY")
+	mustBindEnv("ca-cert", "FETCHURL_CA_CERT")
+	mustBindEnv("ca-key", "FETCHURL_CA_KEY")
+	mustBindEnv("upstream", "FETCHURL_UPSTREAM")
+}
+
+func mustBindEnv(key, env string) {
+	if err := viper.BindEnv(key, env); err != nil {
+		panic(fmt.Sprintf("failed to bind env %q: %v", env, err))
+	}
 }
 
 func mustBindPFlag(key string, flag *pflag.Flag) {

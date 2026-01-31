@@ -35,10 +35,12 @@ func GenerateCA(certPath, keyPath string) error {
 		},
 		NotBefore:             time.Now(),
 		NotAfter:              time.Now().Add(10 * 365 * 24 * time.Hour), // 10 years
-		KeyUsage:              x509.KeyUsageCertSign | x509.KeyUsageDigitalSignature,
+		KeyUsage:              x509.KeyUsageCertSign | x509.KeyUsageDigitalSignature | x509.KeyUsageCRLSign,
 		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth},
 		BasicConstraintsValid: true,
 		IsCA:                  true,
+		MaxPathLen:            0,
+		MaxPathLenZero:        true,
 	}
 
 	// Create certificate
@@ -52,7 +54,7 @@ func GenerateCA(certPath, keyPath string) error {
 	if err != nil {
 		return fmt.Errorf("failed to open %s for writing: %w", certPath, err)
 	}
-	defer certOut.Close()
+	defer func() { _ = certOut.Close() }()
 
 	if err := pem.Encode(certOut, &pem.Block{Type: "CERTIFICATE", Bytes: derBytes}); err != nil {
 		return fmt.Errorf("failed to write data to %s: %w", certPath, err)

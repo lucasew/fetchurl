@@ -9,6 +9,46 @@ import (
 	"context"
 )
 
+const getAllHashes = `-- name: GetAllHashes :many
+SELECT algo, hash FROM urls
+WHERE url = ?
+ORDER BY
+    CASE algo
+        WHEN 'sha256' THEN 1
+        WHEN 'sha512' THEN 2
+        WHEN 'sha1' THEN 3
+        ELSE 4
+    END ASC
+`
+
+type GetAllHashesRow struct {
+	Algo string
+	Hash string
+}
+
+func (q *Queries) GetAllHashes(ctx context.Context, url string) ([]GetAllHashesRow, error) {
+	rows, err := q.db.QueryContext(ctx, getAllHashes, url)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetAllHashesRow
+	for rows.Next() {
+		var i GetAllHashesRow
+		if err := rows.Scan(&i.Algo, &i.Hash); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getHash = `-- name: GetHash :one
 SELECT hash FROM urls
 WHERE url = ? AND algo = ? LIMIT 1

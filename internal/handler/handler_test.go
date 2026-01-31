@@ -18,7 +18,7 @@ func TestCASHandler(t *testing.T) {
 	// Setup temporary cache dir
 	cacheDir := t.TempDir()
 	localRepo := repository.NewLocalRepository(cacheDir, nil)
-	h := NewCASHandler(localRepo, fetcher.NewService(nil))
+	h := NewCASHandler(localRepo, fetcher.NewService(nil, nil))
 
 	// Setup mock upstream server (origin server for files)
 	origin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -173,15 +173,15 @@ func TestUpstream(t *testing.T) {
 	_ = os.WriteFile(upstreamFile, content, 0644)
 
 	upstreamLocal := repository.NewLocalRepository(upstreamCacheDir, nil)
-	upstreamHandler := NewCASHandler(upstreamLocal, fetcher.NewService(nil))
+	upstreamHandler := NewCASHandler(upstreamLocal, fetcher.NewService(nil, nil))
 	upstreamServer := httptest.NewServer(upstreamHandler)
 	defer upstreamServer.Close()
 
 	// Setup Server 1 (Local)
 	localCacheDir := t.TempDir()
 	localRepo := repository.NewLocalRepository(localCacheDir, nil)
-	upstreamRepo := repository.NewUpstreamRepository(upstreamServer.URL)
-	localHandler := NewCASHandler(localRepo, fetcher.NewService([]repository.Repository{upstreamRepo}))
+	upstreamRepo := repository.NewUpstreamRepository(upstreamServer.URL, nil)
+	localHandler := NewCASHandler(localRepo, fetcher.NewService([]repository.Repository{upstreamRepo}, nil))
 
 	t.Run("Fetch from Upstream", func(t *testing.T) {
 		req := httptest.NewRequest("GET", fmt.Sprintf("/fetch/sha256/%s", hash), nil)

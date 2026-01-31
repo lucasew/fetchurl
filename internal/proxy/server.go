@@ -53,10 +53,27 @@ func NewServer(local repository.WritableRepository, fetcher fetcher.Fetcher, rul
 func (s *Server) handleRequest(r *http.Request, ctx *goproxy.ProxyCtx) (*http.Request, *http.Response) {
 	slog.Debug("request", "curl", ctx.Req.URL, "rurl", r.URL)
 	for _, rule := range s.Rules {
-		res := rule(r.Context(), r.URL)
-		if res != nil {
+		results := rule(r.Context(), r.URL)
+		if len(results) == 0 {
+			continue
+		}
+
+		slog.Info("Proxy rule matched", "url", r.URL.String(), "result_count", len(results))
+
+		// Try each hash in order
+		for _, res := range results {
 			algo, hash := res.Algo, res.Hash
-			slog.Info("Proxy rule matched", "url", r.URL.String(), "algo", algo, "hash", hash)
+			slog.Debug("Trying hash", "algo", algo, "hash", hash)
+
+			// Check if already in cache (before fetching)
+			cacheReader, _, cacheErr := s.Local.Get(r.Context(), algo, hash)
+			isCacheHit := cacheErr == nil
+			if isCacheHit {
+				_ = cacheReader.Close() // We'll get it again via GetOrFetch
+				slog.Info("Cache HIT", "url", r.URL.String(), "algo", algo, "hash", hash)
+			} else {
+				slog.Info("Cache MISS", "url", r.URL.String(), "algo", algo, "hash", hash)
+			}
 
 			fetchFn := func() (io.ReadCloser, int64, error) {
 				return s.Fetcher.Fetch(r.Context(), algo, hash, []string{r.URL.String()})
@@ -64,13 +81,16 @@ func (s *Server) handleRequest(r *http.Request, ctx *goproxy.ProxyCtx) (*http.Re
 
 			reader, size, err := s.Local.GetOrFetch(r.Context(), algo, hash, fetchFn)
 			if err != nil {
-				slog.Warn("Failed to fetch/store in proxy, falling back to direct proxy", "error", err)
-				// Fallback: return nil response, goproxy will proxy the request normally
-				return r, nil
+				slog.Warn("Failed to fetch with hash, trying next", "algo", algo, "hash", hash, "error", err)
+				continue  // Try next hash
 			}
-			slog.Info("Proxy served from cache", "algo", algo, "hash", hash)
+			slog.Info("Proxy served", "url", r.URL.String(), "algo", algo, "hash", hash, "cache_hit", isCacheHit)
 			return r, s.newResponse(r, reader, size, algo, hash)
 		}
+
+		// All hashes from this rule failed
+		slog.Warn("All hashes failed for matched rule", "url", r.URL.String())
+		return r, nil  // Fallback to normal proxy
 	}
 
 	// No rule matched, pass through

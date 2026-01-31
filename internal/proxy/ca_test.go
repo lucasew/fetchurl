@@ -14,7 +14,7 @@ func TestGenerateCA(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tempDir)
+	defer func() { _ = os.RemoveAll(tempDir) }()
 
 	certPath := filepath.Join(tempDir, "ca.pem")
 	keyPath := filepath.Join(tempDir, "ca-key.pem")

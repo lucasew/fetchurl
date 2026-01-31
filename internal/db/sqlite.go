@@ -35,12 +35,12 @@ func Open(path string) (*DB, error) {
 
 	// Enable WAL mode
 	if _, err := db.Exec("PRAGMA journal_mode=WAL;"); err != nil {
-		db.Close()
+		_ = db.Close()
 		return nil, fmt.Errorf("failed to enable WAL mode: %w", err)
 	}
 
 	if err := migrateDB(db); err != nil {
-		db.Close()
+		_ = db.Close()
 		return nil, fmt.Errorf("failed to run migrations: %w", err)
 	}
 
@@ -85,9 +85,9 @@ func (d *DB) Insert(ctx context.Context, algo string, entries map[string]string)
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
-	qtx := d.Queries.WithTx(tx)
+	qtx := d.WithTx(tx)
 
 	for u, h := range entries {
 		err := qtx.InsertHash(ctx, InsertHashParams{
@@ -109,7 +109,7 @@ func (d *DB) Insert(ctx context.Context, algo string, entries map[string]string)
 
 // Get retrieves the hash for a given URL and algo.
 func (d *DB) Get(ctx context.Context, u, algo string) (string, bool, error) {
-	hash, err := d.Queries.GetHash(ctx, GetHashParams{
+	hash, err := d.GetHash(ctx, GetHashParams{
 		Url:  u,
 		Algo: algo,
 	})
@@ -120,4 +120,9 @@ func (d *DB) Get(ctx context.Context, u, algo string) (string, bool, error) {
 		return "", false, fmt.Errorf("failed to get hash for url %s: %w", u, err)
 	}
 	return hash, true, nil
+}
+
+// GetAll retrieves all hashes for a given URL, ordered by priority.
+func (d *DB) GetAll(ctx context.Context, url string) ([]GetAllHashesRow, error) {
+	return d.GetAllHashes(ctx, url)
 }

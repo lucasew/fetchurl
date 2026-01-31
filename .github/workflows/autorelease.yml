@@ -1,9 +1,6 @@
 name: autorelease
 
 on:
-  push:
-    branches: ["main", "master"]
-    tags: ["v*"]
   pull_request:
   workflow_dispatch:
 
@@ -20,7 +17,7 @@ jobs:
           fetch-depth: 0
 
       - name: Install mise
-        uses: jdx/mise-action@v2
+        uses: jdx/mise-action@v3
 
       - name: Install dependencies
         run: mise run install
@@ -29,6 +26,7 @@ jobs:
         run: mise run codegen
 
       - name: Create PR if changes
+        if: github.event_name != 'pull_request'
         uses: peter-evans/create-pull-request@v6
         with:
           commit-message: "chore: update generated code"
@@ -39,9 +37,3 @@ jobs:
 
       - name: Run CI
         run: mise run ci
-
-      - name: Release
-        if: startsWith(github.ref, 'refs/tags/')
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release create ${{ github.ref_name }} --generate-notes
