@@ -4,7 +4,6 @@ go = "1.25.6"
 golangci-lint = "2.8.0"
 actionlint = "1.7.10"
 node = "22.13.0"
-"github:sqlc-dev/sqlc" = "1.30.0"
 
 [tasks."lint:go"]
 run = "golangci-lint run ./..."
@@ -35,5 +34,5 @@ depends = ["lint", "test"]
 description = "Run CI pipeline"
 
 [tasks]
-codegen = "sqlc generate"
+codegen = "true"
 install = "go get ./..."
