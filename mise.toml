@@ -45,7 +45,7 @@ run = "go test -v ./..."
 description = "Run tests"
 
 [tasks.build]
-run = "go build -o dist/fetchurl ./cmd/fetchurl"
+run = "mkdir -p dist && go build -o dist/fetchurl ./cmd/fetchurl"
 description = "Build binary"
 
 [tasks.ci]

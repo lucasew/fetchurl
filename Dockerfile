@@ -3,7 +3,7 @@ FROM jdxcode/mise:latest AS builder
 
 WORKDIR /app
 COPY go.mod go.sum mise.toml ./
-RUN mise trust && mise install
+RUN mise trust && mise install go
 RUN mise run install
 COPY . .
 # Disable CGO for static build compatible with Alpine
