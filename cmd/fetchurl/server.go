@@ -26,7 +26,7 @@ var serverCmd = &cobra.Command{
 			Upstreams:        viper.GetStringSlice("upstream"),
 		}
 
-		server, cleanup, err := app.NewServer(cfg)
+		server, cleanup, err := app.NewServer(cmd.Context(), cfg)
 		if err != nil {
 			slog.Error("Failed to initialize server", "error", err)
 			os.Exit(1)

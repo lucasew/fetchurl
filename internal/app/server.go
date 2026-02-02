@@ -27,7 +27,7 @@ type Config struct {
 	Upstreams        []string
 }
 
-func NewServer(cfg Config) (*http.Server, func(), error) {
+func NewServer(ctx context.Context, cfg Config) (*http.Server, func(), error) {
 	// Setup Eviction Manager
 	strat, err := eviction.GetStrategy(cfg.EvictionStrategy)
 	if err != nil {
@@ -60,9 +60,10 @@ func NewServer(cfg Config) (*http.Server, func(), error) {
 		slog.Warn("Failed to load initial cache state", "error", err)
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
+	// Use the context from Cobra, which is canceled on shutdown
+	appCtx, cancel := context.WithCancel(ctx)
 	// Start eviction manager
-	go mgr.Start(ctx)
+	go mgr.Start(appCtx)
 
 	if err := os.MkdirAll(cfg.CacheDir, 0755); err != nil {
 		cancel()
@@ -74,7 +75,7 @@ func NewServer(cfg Config) (*http.Server, func(), error) {
 
 	localRepo := repository.NewLocalRepository(cfg.CacheDir, mgr)
 
-	casHandler := handler.NewCASHandler(localRepo, httpClientForRequests, cfg.Upstreams)
+	casHandler := handler.NewCASHandler(localRepo, httpClientForRequests, cfg.Upstreams, appCtx)
 
 	mux := http.NewServeMux()
 	// Mux handling: /api/fetchurl/{algo}/{hash}

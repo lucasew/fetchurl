@@ -18,7 +18,7 @@ func TestCASHandler(t *testing.T) {
 	cacheDir := t.TempDir()
 	localRepo := repository.NewLocalRepository(cacheDir, nil)
 	// We use the default client for the handler
-	h := NewCASHandler(localRepo, nil, nil)
+	h := NewCASHandler(localRepo, nil, nil, t.Context())
 
 	// Setup mock upstream server (origin server for files)
 	origin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

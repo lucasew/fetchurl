@@ -19,10 +19,11 @@ type CASHandler struct {
 	Local     *repository.LocalRepository
 	Client    *http.Client
 	Upstreams []string
+	AppCtx    context.Context // Application context (from Cobra), not request context
 	g         singleflight.Group
 }
 
-func NewCASHandler(local *repository.LocalRepository, client *http.Client, upstreams []string) *CASHandler {
+func NewCASHandler(local *repository.LocalRepository, client *http.Client, upstreams []string, appCtx context.Context) *CASHandler {
 	if client == nil {
 		client = http.DefaultClient
 	}
@@ -30,6 +31,7 @@ func NewCASHandler(local *repository.LocalRepository, client *http.Client, upstr
 		Local:     local,
 		Client:    client,
 		Upstreams: upstreams,
+		AppCtx:    appCtx,
 	}
 }
 
@@ -91,7 +93,7 @@ func (h *CASHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	headersWritten := false
 
 	_, err, shared := h.g.Do(sfKey, func() (interface{}, error) {
-		err := h.fetchAndStream(r.Context(), w, algo, hash, sources, &headersWritten)
+		err := h.fetchAndStream(h.AppCtx, w, algo, hash, sources, &headersWritten)
 		return nil, err
 	})
 
