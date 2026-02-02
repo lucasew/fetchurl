@@ -110,8 +110,7 @@ jobs:
       run: |
         gh release create "$TAG" \
           --title "$TITLE" \
-          --generate-notes \
-          --notes-start-tag $(gh release list --limit 1 --json tagName -q .[].tagName)
+          --generate-notes
 
     - name: Upload release artifacts
       if: env.RELEASE_VERSION != '' && github.event_name != 'pull_request'
