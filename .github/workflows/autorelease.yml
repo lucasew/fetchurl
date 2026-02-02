@@ -73,7 +73,13 @@ jobs:
         fi
 
     - name: Build binaries
+      env:
+        TAG: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
       run: |
+        echo "::group::Build container"
+        docker build -t "$TAG:latest" .
+        echo "::endgroup::"
+
         mkdir build -p && ls && pwd
 
         echo "# Built targets" >> $GITHUB_STEP_SUMMARY
@@ -114,3 +120,21 @@ jobs:
         TAG: ${{ env.RELEASE_VERSION }}
       run: |
         gh release upload "$TAG" build/* --clobber
+
+    - name: Login to registry
+      uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef # v3
+      if: env.RELEASE_VERSION != '' && github.event_name != 'pull_request'
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ env.USERNAME }}
+        password: ${{ github.token }}
+
+    - name: "Build and publish container"
+      env:
+        TAG: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+      if: env.RELEASE_VERSION != '' && github.event_name != 'pull_request'
+      run: |
+        VERSION="$(cat version.txt)"
+        docker tag "$TAG:latest" "$TAG:$VERSION"
+        docker push "$TAG:$VERSION"
+        docker push "$TAG:latest"
