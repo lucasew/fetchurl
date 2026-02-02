@@ -201,7 +201,7 @@ func (h *CASHandler) tryFetchFromSource(ctx context.Context, w http.ResponseWrit
 	// 3. Stream
 	hasher, err := hashutil.GetHasher(algo)
 	if err != nil {
-			return err
+		return err
 	}
 
 	mw := io.MultiWriter(w, tmpFile, hasher)
@@ -219,8 +219,8 @@ func (h *CASHandler) tryFetchFromSource(ctx context.Context, w http.ResponseWrit
 	}
 
 	if resp.ContentLength > 0 && written != resp.ContentLength {
-			slog.Warn("Size mismatch", "expected", resp.ContentLength, "got", written)
-			panic(http.ErrAbortHandler)
+		slog.Warn("Size mismatch", "expected", resp.ContentLength, "got", written)
+		panic(http.ErrAbortHandler)
 	}
 
 	// 5. Commit
