@@ -8,7 +8,7 @@ import (
 
 // Policy triggers eviction when disk free space is below a threshold.
 type Policy struct {
-	Path        string
+	Path         string
 	MinFreeBytes int64
 }
 
