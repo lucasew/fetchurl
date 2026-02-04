@@ -29,6 +29,8 @@ X-Source-Urls: https://cdn1.com/file.tar.gz, https://backup.org/archive.tgz
 ```
 - The server MUST only work with public, or well hidden, data
 - `X-Source-Urls` MUST define as a list of source URLs following [RFC 8941](https://www.rfc-editor.org/rfc/rfc8941.html#name-lists)
+- A source URL SHOULD be chosen randomly at fetch time, like a mirror list
+- The server SHOULD NOT retry or fallback sources at fetch time as the content already starts flowing to clients when the channel to the source is already confirmed
 - The `FETCHURL_SERVER` MUST define a list of servers following [RFC 8941](https://www.rfc-editor.org/rfc/rfc8941.html#name-lists)
 - The `FETCHURL_SERVER` environment variable MUST have the full URLs ready to append `/:algo/:hash`
 - The `FETCHURL_SERVER` environment variable CAN be ausent or empty, which MUST disable server support
