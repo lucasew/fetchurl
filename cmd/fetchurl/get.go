@@ -54,7 +54,12 @@ var getCmd = &cobra.Command{
 			out = os.Stdout
 		}
 
-		if err := f.Fetch(cmd.Context(), algo, hash, urls, out); err != nil {
+		if err := f.Fetch(cmd.Context(), fetcher.FetchOptions{
+			Algo: algo,
+			Hash: hash,
+			URLs: urls,
+			Out:  out,
+		}); err != nil {
 			slog.Error("Fetch failed", "error", err)
 			if output != "" {
 				os.Remove(output)

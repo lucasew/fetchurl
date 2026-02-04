@@ -21,6 +21,13 @@ type Fetcher struct {
 	Servers []string
 }
 
+type FetchOptions struct {
+	Algo string
+	Hash string
+	URLs []string
+	Out  io.Writer
+}
+
 func NewFetcher(client *http.Client, servers []string) *Fetcher {
 	if client == nil {
 		client = http.DefaultClient
@@ -31,29 +38,29 @@ func NewFetcher(client *http.Client, servers []string) *Fetcher {
 	}
 }
 
-func (f *Fetcher) Fetch(ctx context.Context, algo, hashStr string, urls []string, out io.Writer) error {
-	if !hashutil.IsSupported(algo) {
-		return fmt.Errorf("unsupported algorithm: %s", algo)
+func (f *Fetcher) Fetch(ctx context.Context, opts FetchOptions) error {
+	if !hashutil.IsSupported(opts.Algo) {
+		return fmt.Errorf("unsupported algorithm: %s", opts.Algo)
 	}
 
 	// 1. Try Servers
 	for _, server := range f.Servers {
-		err := f.fetchFromServer(ctx, server, algo, hashStr, urls, out)
+		err := f.fetchFromServer(ctx, server, opts.Algo, opts.Hash, opts.URLs, opts.Out)
 		if err == nil {
 			return nil
 		}
 		slog.Warn("Failed to fetch from server", "server", server, "error", err)
-		f.resetOutput(out)
+		f.resetOutput(opts.Out)
 	}
 
 	// 2. Fallback to Direct Download
-	for _, url := range urls {
-		err := f.fetchDirect(ctx, url, algo, hashStr, out)
+	for _, url := range opts.URLs {
+		err := f.fetchDirect(ctx, url, opts.Algo, opts.Hash, opts.Out)
 		if err == nil {
 			return nil
 		}
 		slog.Warn("Failed to fetch from source", "url", url, "error", err)
-		f.resetOutput(out)
+		f.resetOutput(opts.Out)
 	}
 
 	return fmt.Errorf("failed to fetch file from any source")

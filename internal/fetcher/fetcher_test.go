@@ -29,7 +29,12 @@ func TestFetcher(t *testing.T) {
 
 		f := NewFetcher(nil, nil)
 		var out bytes.Buffer
-		err := f.Fetch(t.Context(), "sha256", hash, []string{ts.URL}, &out)
+		err := f.Fetch(t.Context(), FetchOptions{
+			Algo: "sha256",
+			Hash: hash,
+			URLs: []string{ts.URL},
+			Out:  &out,
+		})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -46,7 +51,12 @@ func TestFetcher(t *testing.T) {
 
 		f := NewFetcher(nil, nil)
 		var out bytes.Buffer
-		err := f.Fetch(t.Context(), "sha256", hash, []string{ts.URL}, &out)
+		err := f.Fetch(t.Context(), FetchOptions{
+			Algo: "sha256",
+			Hash: hash,
+			URLs: []string{ts.URL},
+			Out:  &out,
+		})
 		if err == nil {
 			t.Fatal("expected error, got nil")
 		}
@@ -88,7 +98,12 @@ func TestFetcher(t *testing.T) {
 
 		f := NewFetcher(nil, []string{server.URL})
 		var out bytes.Buffer
-		err := f.Fetch(t.Context(), "sha256", hash, []string{source.URL}, &out)
+		err := f.Fetch(t.Context(), FetchOptions{
+			Algo: "sha256",
+			Hash: hash,
+			URLs: []string{source.URL},
+			Out:  &out,
+		})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -110,7 +125,12 @@ func TestFetcher(t *testing.T) {
 
 		f := NewFetcher(nil, []string{server.URL})
 		var out bytes.Buffer
-		err := f.Fetch(t.Context(), "sha256", hash, []string{source.URL}, &out)
+		err := f.Fetch(t.Context(), FetchOptions{
+			Algo: "sha256",
+			Hash: hash,
+			URLs: []string{source.URL},
+			Out:  &out,
+		})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
