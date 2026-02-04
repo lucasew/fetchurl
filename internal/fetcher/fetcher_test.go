@@ -138,4 +138,38 @@ func TestFetcher(t *testing.T) {
 			t.Errorf("got %q, want %q", out.String(), string(content))
 		}
 	})
+
+	t.Run("Partial Download No Fallback", func(t *testing.T) {
+		source := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Write(content)
+		}))
+		defer source.Close()
+
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Write some partial content then fail
+			// To simulate "fail after write", we can't easily hijack the connection here cleanly without panicking/closing.
+			// But we can send wrong content which will cause hash mismatch after writing.
+			w.Write([]byte("partial"))
+		}))
+		defer server.Close()
+
+		f := NewFetcher(nil, []string{server.URL})
+		var out bytes.Buffer
+		err := f.Fetch(t.Context(), FetchOptions{
+			Algo: "sha256",
+			Hash: hash,
+			URLs: []string{source.URL},
+			Out:  &out,
+		})
+
+		// It should fail and NOT fallback to source because we wrote partial data from server
+		if err == nil {
+			t.Fatal("expected error, got nil")
+		}
+
+		// The buffer should contain only the partial data from server
+		if out.String() != "partial" {
+			t.Errorf("got %q, want %q", out.String(), "partial")
+		}
+	})
 }

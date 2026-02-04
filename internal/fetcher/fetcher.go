@@ -11,7 +11,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/lucasew/fetchurl/internal/errutil"
 	"github.com/lucasew/fetchurl/internal/hashutil"
 	"github.com/schollz/progressbar/v3"
 	"github.com/shogo82148/go-sfv"
@@ -44,37 +43,44 @@ func (f *Fetcher) Fetch(ctx context.Context, opts FetchOptions) error {
 		return fmt.Errorf("unsupported algorithm: %s", opts.Algo)
 	}
 
+	cw := &CountingWriter{Writer: opts.Out}
+
 	// 1. Try Servers
 	for _, server := range f.Servers {
-		err := f.fetchFromServer(ctx, server, opts.Algo, opts.Hash, opts.URLs, opts.Out)
+		err := f.fetchFromServer(ctx, server, opts.Algo, opts.Hash, opts.URLs, cw)
 		if err == nil {
 			return nil
 		}
 		slog.Warn("Failed to fetch from server", "server", server, "error", err)
-		f.resetOutput(opts.Out)
+		if cw.N > 0 {
+			return fmt.Errorf("failed during download from server (partial write): %w", err)
+		}
 	}
 
 	// 2. Fallback to Direct Download
 	for _, url := range opts.URLs {
-		err := f.fetchDirect(ctx, url, opts.Algo, opts.Hash, opts.Out)
+		err := f.fetchDirect(ctx, url, opts.Algo, opts.Hash, cw)
 		if err == nil {
 			return nil
 		}
 		slog.Warn("Failed to fetch from source", "url", url, "error", err)
-		f.resetOutput(opts.Out)
+		if cw.N > 0 {
+			return fmt.Errorf("failed during download from source (partial write): %w", err)
+		}
 	}
 
 	return fmt.Errorf("failed to fetch file from any source")
 }
 
-func (f *Fetcher) resetOutput(out io.Writer) {
-	if seeker, ok := out.(io.Seeker); ok {
-		_, err := seeker.Seek(0, 0)
-		errutil.LogMsg(err, "Failed to seek output")
-		if file, ok := out.(*os.File); ok {
-			errutil.LogMsg(file.Truncate(0), "Failed to truncate output file")
-		}
-	}
+type CountingWriter struct {
+	Writer io.Writer
+	N      int64
+}
+
+func (c *CountingWriter) Write(p []byte) (n int, err error) {
+	n, err = c.Writer.Write(p)
+	c.N += int64(n)
+	return n, err
 }
 
 func (f *Fetcher) fetchFromServer(ctx context.Context, server, algo, hashStr string, sourceUrls []string, out io.Writer) error {
@@ -132,7 +138,10 @@ func (f *Fetcher) doRequest(req *http.Request, algo, expectedHash string, out io
 		}),
 	)
 
-	hasher, _ := hashutil.GetHasher(algo)
+	hasher, err := hashutil.GetHasher(algo)
+	if err != nil {
+		return err
+	}
 	mw := io.MultiWriter(out, hasher, bar)
 
 	if _, err := io.Copy(mw, resp.Body); err != nil {
