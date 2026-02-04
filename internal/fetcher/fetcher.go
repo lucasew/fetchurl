@@ -92,9 +92,10 @@ func (f *Fetcher) fetchFromServer(ctx context.Context, server, algo, hashStr str
 			list[i] = sfv.Item{Value: url}
 		}
 		val, err := sfv.EncodeList(list)
-		if err == nil {
-			req.Header.Set("X-Source-Urls", val)
+		if err != nil {
+			return fmt.Errorf("failed to encode X-Source-Urls: %w", err)
 		}
+		req.Header.Set("X-Source-Urls", val)
 	}
 
 	return f.doRequest(req, algo, hashStr, out)
