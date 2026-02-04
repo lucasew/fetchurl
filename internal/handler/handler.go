@@ -12,6 +12,7 @@ import (
 
 	"github.com/lucasew/fetchurl/internal/hashutil"
 	"github.com/lucasew/fetchurl/internal/repository"
+	"github.com/shogo82148/go-sfv"
 	"golang.org/x/sync/singleflight"
 )
 
@@ -66,7 +67,10 @@ func (h *CASHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// 2. Cache Miss -> Fetch & Stream
 
 	// Collect candidates
-	var sources []string
+	candidateSources := h.parseSourceUrls(r.Header)
+
+	// Collect sources to try (Upstreams + Candidates)
+	var sourcesToTry []string
 
 	// Add configured upstreams first
 	for _, u := range h.Upstreams {
@@ -76,13 +80,13 @@ func (h *CASHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		// Ensure trailing slash handling
 		base := strings.TrimRight(u, "/")
 		sourceUrl := fmt.Sprintf("%s/api/fetchurl/%s/%s", base, algo, hash)
-		sources = append(sources, sourceUrl)
+		sourcesToTry = append(sourcesToTry, sourceUrl)
 	}
 
 	// Add dynamic sources from headers
-	sources = append(sources, h.parseSourceUrls(r.Header)...)
+	sourcesToTry = append(sourcesToTry, candidateSources...)
 
-	if len(sources) == 0 {
+	if len(sourcesToTry) == 0 {
 		http.Error(w, "Not found and no X-Source-Urls provided", http.StatusNotFound)
 		return
 	}
@@ -93,7 +97,7 @@ func (h *CASHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	headersWritten := false
 
 	_, err, shared := h.g.Do(sfKey, func() (interface{}, error) {
-		err := h.fetchAndStream(h.AppCtx, w, algo, hash, sources, &headersWritten)
+		err := h.fetchAndStream(h.AppCtx, w, algo, hash, sourcesToTry, candidateSources, &headersWritten)
 		return nil, err
 	})
 
@@ -134,9 +138,9 @@ func (h *CASHandler) serveFromCache(w http.ResponseWriter, r *http.Request, algo
 	}
 }
 
-func (h *CASHandler) fetchAndStream(ctx context.Context, w http.ResponseWriter, algo, hash string, sources []string, headersWritten *bool) error {
+func (h *CASHandler) fetchAndStream(ctx context.Context, w http.ResponseWriter, algo, hash string, sources []string, candidateSources []string, headersWritten *bool) error {
 	for _, source := range sources {
-		err := h.tryFetchFromSource(ctx, w, algo, hash, source, headersWritten)
+		err := h.tryFetchFromSource(ctx, w, algo, hash, source, candidateSources, headersWritten)
 		if err == nil {
 			return nil
 		}
@@ -145,7 +149,7 @@ func (h *CASHandler) fetchAndStream(ctx context.Context, w http.ResponseWriter, 
 	return fmt.Errorf("all sources failed")
 }
 
-func (h *CASHandler) tryFetchFromSource(ctx context.Context, w http.ResponseWriter, algo, hash, source string, headersWritten *bool) error {
+func (h *CASHandler) tryFetchFromSource(ctx context.Context, w http.ResponseWriter, algo, hash, source string, candidateSources []string, headersWritten *bool) error {
 	slog.Info("Fetching from source", "url", source, "hash", hash)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, source, nil)
@@ -153,15 +157,19 @@ func (h *CASHandler) tryFetchFromSource(ctx context.Context, w http.ResponseWrit
 		return fmt.Errorf("invalid source URL: %w", err)
 	}
 
-	// Forward X-Source-Urls to allow daisy chaining
-	// We forward the *other* dynamic sources?
-	// Or simply forward what we got?
-	// For now, let's just forward the current source we are trying if it's dynamic?
-	// Actually, if we are calling an Upstream Server, we might want to tell IT about the original X-Source-Urls.
-	// But passing *all* of them (including the one we are calling) might loop?
-	// The loop protection is usually Max-Forwards or checking if we are in the list.
-	// Let's implement simple forwarding of known sources later if requested.
-	// For now, standard fetch.
+	// Forward X-Source-Urls using sfv
+	if len(candidateSources) > 0 {
+		list := make(sfv.List, len(candidateSources))
+		for i, url := range candidateSources {
+			list[i] = sfv.Item{Value: url}
+		}
+		val, err := sfv.EncodeList(list)
+		if err == nil {
+			req.Header.Set("X-Source-Urls", val)
+		} else {
+			slog.Warn("Failed to encode X-Source-Urls header", "error", err)
+		}
+	}
 
 	resp, err := h.Client.Do(req)
 	if err != nil {
@@ -173,6 +181,10 @@ func (h *CASHandler) tryFetchFromSource(ctx context.Context, w http.ResponseWrit
 
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("status %d", resp.StatusCode)
+	}
+
+	if resp.ContentLength == -1 {
+		return fmt.Errorf("source did not provide Content-Length")
 	}
 
 	// Found it! Start streaming.
@@ -234,12 +246,20 @@ func (h *CASHandler) tryFetchFromSource(ctx context.Context, w http.ResponseWrit
 
 func (h *CASHandler) parseSourceUrls(headers http.Header) []string {
 	var urls []string
-	for _, v := range headers.Values("X-Source-Urls") {
-		for _, u := range strings.Split(v, ",") {
-			u = strings.TrimSpace(u)
-			if u != "" {
-				urls = append(urls, u)
-			}
+	values := headers.Values("X-Source-Urls")
+	if len(values) == 0 {
+		return urls
+	}
+
+	list, err := sfv.DecodeList(values)
+	if err != nil {
+		slog.Warn("Failed to parse X-Source-Urls header", "error", err)
+		return urls
+	}
+
+	for _, item := range list {
+		if s, ok := item.Value.(string); ok {
+			urls = append(urls, s)
 		}
 	}
 	return urls
