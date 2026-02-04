@@ -10,6 +10,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/lucasew/fetchurl/internal/errutil"
 	"github.com/lucasew/fetchurl/internal/hashutil"
 	"github.com/lucasew/fetchurl/internal/repository"
 	"github.com/shogo82148/go-sfv"
@@ -128,7 +129,7 @@ func (h *CASHandler) serveFromCache(w http.ResponseWriter, r *http.Request, algo
 		return
 	}
 	defer func() {
-		_ = reader.Close()
+		errutil.LogMsg(reader.Close(), "Failed to close cache reader")
 	}()
 
 	h.setCacheHeaders(w, algo, hash)
@@ -176,7 +177,7 @@ func (h *CASHandler) tryFetchFromSource(ctx context.Context, w http.ResponseWrit
 		return fmt.Errorf("request failed: %w", err)
 	}
 	defer func() {
-		_ = resp.Body.Close()
+		errutil.LogMsg(resp.Body.Close(), "Failed to close response body")
 	}()
 
 	if resp.StatusCode != http.StatusOK {
@@ -196,9 +197,9 @@ func (h *CASHandler) tryFetchFromSource(ctx context.Context, w http.ResponseWrit
 	}
 
 	defer func() {
-		_ = tmpFile.Close()
+		errutil.LogMsg(tmpFile.Close(), "Failed to close temp file")
 		if f, ok := tmpFile.(*os.File); ok {
-			_ = os.Remove(f.Name())
+			errutil.LogMsg(os.Remove(f.Name()), "Failed to remove temp file", "path", f.Name())
 		}
 	}()
 

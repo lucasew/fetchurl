@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/lucasew/fetchurl/internal/errutil"
 	"github.com/lucasew/fetchurl/internal/hashutil"
 	"github.com/schollz/progressbar/v3"
 	"github.com/shogo82148/go-sfv"
@@ -68,9 +69,10 @@ func (f *Fetcher) Fetch(ctx context.Context, opts FetchOptions) error {
 
 func (f *Fetcher) resetOutput(out io.Writer) {
 	if seeker, ok := out.(io.Seeker); ok {
-		_, _ = seeker.Seek(0, 0)
+		_, err := seeker.Seek(0, 0)
+		errutil.LogMsg(err, "Failed to seek output")
 		if file, ok := out.(*os.File); ok {
-			_ = file.Truncate(0)
+			errutil.LogMsg(file.Truncate(0), "Failed to truncate output file")
 		}
 	}
 }
