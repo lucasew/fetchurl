@@ -32,6 +32,11 @@ func TestCASHandler(t *testing.T) {
 		case "/big":
 			w.Header().Set("Content-Length", "10")
 			_, _ = w.Write([]byte("0123456789"))
+		case "/no-len":
+			// Force chunked encoding to simulate missing Content-Length
+			w.Header().Set("Transfer-Encoding", "chunked")
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte("content"))
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}
@@ -44,7 +49,7 @@ func TestCASHandler(t *testing.T) {
 
 	t.Run("Download Success", func(t *testing.T) {
 		req := httptest.NewRequest("GET", fmt.Sprintf("/sha256/%s", hash1), nil)
-		req.Header.Set("X-Source-Urls", origin.URL+"/file1")
+		req.Header.Set("X-Source-Urls", "\""+origin.URL+"/file1\"")
 		w := httptest.NewRecorder()
 
 		h.ServeHTTP(w, req)
@@ -103,7 +108,7 @@ func TestCASHandler(t *testing.T) {
 		}()
 
 		req := httptest.NewRequest("GET", fmt.Sprintf("/sha256/%s", hash2), nil)
-		req.Header.Set("X-Source-Urls", origin.URL+"/file1")
+		req.Header.Set("X-Source-Urls", "\""+origin.URL+"/file1\"")
 		w := httptest.NewRecorder()
 
 		h.ServeHTTP(w, req)
@@ -115,8 +120,9 @@ func TestCASHandler(t *testing.T) {
 
 		req := httptest.NewRequest("GET", fmt.Sprintf("/sha256/%s", hash2), nil)
 		// Header with multiple sources
-		req.Header.Add("X-Source-Urls", origin.URL+"/fail")
-		req.Header.Add("X-Source-Urls", origin.URL+"/file2")
+		// SFV List: "url1", "url2"
+		headerVal := fmt.Sprintf("\"%s/fail\", \"%s/file2\"", origin.URL, origin.URL)
+		req.Header.Set("X-Source-Urls", headerVal)
 		w := httptest.NewRecorder()
 
 		h.ServeHTTP(w, req)
@@ -142,6 +148,18 @@ func TestCASHandler(t *testing.T) {
 		h.ServeHTTP(w, req)
 		if w.Code != http.StatusNotFound {
 			t.Errorf("expected 404, got %d", w.Code)
+		}
+	})
+
+	t.Run("Missing Content-Length", func(t *testing.T) {
+		hash := sha256Sum([]byte("content"))
+		req := httptest.NewRequest("GET", fmt.Sprintf("/sha256/%s", hash), nil)
+		req.Header.Set("X-Source-Urls", "\""+origin.URL+"/no-len\"")
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, req)
+		if w.Code != http.StatusBadGateway {
+			// It returns 502 Bad Gateway because fetch failed
+			t.Errorf("expected 502, got %d", w.Code)
 		}
 	})
 }
