@@ -121,7 +121,9 @@ func (f *Fetcher) doRequest(req *http.Request, algo, expectedHash string, out io
 	if err != nil {
 		return err
 	}
-	defer errutil.LogMsg(resp.Body.Close(), "Failed to close response body")
+	defer func() {
+		errutil.LogMsg(resp.Body.Close(), "Failed to close response body")
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("status %d", resp.StatusCode)

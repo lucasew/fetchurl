@@ -49,7 +49,9 @@ var getCmd = &cobra.Command{
 				slog.Error("Failed to create output file", "error", err)
 				os.Exit(1)
 			}
-			defer errutil.LogMsg(file.Close(), "Failed to close output file")
+			defer func() {
+				errutil.LogMsg(file.Close(), "Failed to close output file")
+			}()
 			out = file
 		} else {
 			out = os.Stdout
