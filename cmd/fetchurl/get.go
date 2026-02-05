@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 
+	"github.com/lucasew/fetchurl/internal/errutil"
 	"github.com/lucasew/fetchurl/internal/fetcher"
 	"github.com/shogo82148/go-sfv"
 	"github.com/spf13/cobra"
@@ -48,7 +49,7 @@ var getCmd = &cobra.Command{
 				slog.Error("Failed to create output file", "error", err)
 				os.Exit(1)
 			}
-			defer file.Close()
+			defer errutil.LogMsg(file.Close(), "Failed to close output file")
 			out = file
 		} else {
 			out = os.Stdout
@@ -62,7 +63,7 @@ var getCmd = &cobra.Command{
 		}); err != nil {
 			slog.Error("Fetch failed", "error", err)
 			if output != "" {
-				os.Remove(output)
+				errutil.LogMsg(os.Remove(output), "Failed to remove output file after failed fetch", "path", output)
 			}
 			os.Exit(1)
 		}

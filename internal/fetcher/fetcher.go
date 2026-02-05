@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/lucasew/fetchurl/internal/errutil"
 	"github.com/lucasew/fetchurl/internal/hashutil"
 	"github.com/schollz/progressbar/v3"
 	"github.com/shogo82148/go-sfv"
@@ -120,7 +121,7 @@ func (f *Fetcher) doRequest(req *http.Request, algo, expectedHash string, out io
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer errutil.LogMsg(resp.Body.Close(), "Failed to close response body")
 
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("status %d", resp.StatusCode)
