@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"math/rand"
 	"net/http"
 	"os"
 	"strings"
@@ -44,7 +45,7 @@ func (h *CASHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Invalid path format. Expected /{algo}/{hash}", http.StatusBadRequest)
 		return
 	}
-	algo := parts[0]
+	algo := hashutil.NormalizeAlgo(parts[0])
 	hash := parts[1]
 
 	if !hashutil.IsSupported(algo) {
@@ -84,7 +85,10 @@ func (h *CASHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		sourcesToTry = append(sourcesToTry, sourceUrl)
 	}
 
-	// Add dynamic sources from headers
+	// Add dynamic sources from headers (shuffled per DESIGN.md constraint 3)
+	rand.Shuffle(len(candidateSources), func(i, j int) {
+		candidateSources[i], candidateSources[j] = candidateSources[j], candidateSources[i]
+	})
 	sourcesToTry = append(sourcesToTry, candidateSources...)
 
 	if len(sourcesToTry) == 0 {
@@ -146,6 +150,9 @@ func (h *CASHandler) fetchAndStream(ctx context.Context, w http.ResponseWriter, 
 			return nil
 		}
 		slog.Warn("Fetch from source failed", "url", source, "error", err)
+		if *headersWritten {
+			return fmt.Errorf("fetch failed after headers already written: %w", err)
+		}
 	}
 	return fmt.Errorf("all sources failed")
 }
@@ -196,10 +203,13 @@ func (h *CASHandler) tryFetchFromSource(ctx context.Context, w http.ResponseWrit
 		return fmt.Errorf("failed to create temp file: %w", err)
 	}
 
+	committed := false
 	defer func() {
-		errutil.LogMsg(tmpFile.Close(), "Failed to close temp file")
-		if f, ok := tmpFile.(*os.File); ok {
-			errutil.LogMsg(os.Remove(f.Name()), "Failed to remove temp file", "path", f.Name())
+		if !committed {
+			errutil.LogMsg(tmpFile.Close(), "Failed to close temp file")
+			if f, ok := tmpFile.(*os.File); ok {
+				errutil.LogMsg(os.Remove(f.Name()), "Failed to remove temp file", "path", f.Name())
+			}
 		}
 	}()
 
@@ -239,8 +249,9 @@ func (h *CASHandler) tryFetchFromSource(ctx context.Context, w http.ResponseWrit
 	// 5. Commit
 	if err := commit(); err != nil {
 		slog.Error("Failed to commit file", "error", err)
-		return nil
+		return err
 	}
+	committed = true
 
 	return nil // Success
 }

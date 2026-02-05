@@ -3,6 +3,7 @@ package httpclient
 import (
 	"crypto/tls"
 	"crypto/x509"
+	"log/slog"
 	"net/http"
 	"time"
 )
@@ -25,6 +26,8 @@ func NewClient(caCert *tls.Certificate) *http.Client {
 		cert, err := x509.ParseCertificate(caCert.Certificate[0])
 		if err == nil {
 			rootCAs.AddCert(cert)
+		} else {
+			slog.Error("Failed to parse custom CA certificate", "error", err)
 		}
 	}
 

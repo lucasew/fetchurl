@@ -105,7 +105,9 @@ func (r *LocalRepository) BeginWrite(algo, hash string) (io.WriteCloser, func() 
 		// Update eviction
 		if r.eviction != nil {
 			info, err := os.Stat(finalPath)
-			if err == nil {
+			if err != nil {
+				slog.Error("Failed to stat committed file", "path", finalPath, "error", err)
+			} else {
 				r.eviction.Add(r.getRelPath(algo, hash), info.Size())
 				slog.Info("Stored file", "algo", algo, "hash", hash, "size", info.Size())
 			}
