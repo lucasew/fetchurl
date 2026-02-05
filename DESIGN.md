@@ -33,7 +33,7 @@ X-Source-Urls: https://cdn1.com/file.tar.gz, https://backup.org/archive.tgz
 - The server SHOULD NOT retry or fallback sources at fetch time as the content already starts flowing to clients when the channel to the source is already confirmed
 - The `FETCHURL_SERVER` MUST define a list of servers following [RFC 8941](https://www.rfc-editor.org/rfc/rfc8941.html#name-lists)
 - The `FETCHURL_SERVER` environment variable MUST have the full URLs ready to append `/:algo/:hash`
-- The `FETCHURL_SERVER` environment variable CAN be ausent or empty, which MUST disable server support
+- The `FETCHURL_SERVER` environment variable CAN be absent or empty, which MUST disable server support
 - Clients are instructed by environment to use servers by using the `FETCHURL_SERVER` environment variable
 - Clients MUST check for `FETCHURL_SERVER`
 - Clients CAN fall back to direct download if something goes wrong
