@@ -50,14 +50,19 @@ func TestLocalRepository(t *testing.T) {
 			t.Fatalf("Get failed: %v", err)
 		}
 		defer func() {
-			_ = rc.Close()
+			if err := rc.Close(); err != nil {
+				t.Errorf("failed to close rc: %v", err)
+			}
 		}()
 
 		if size != int64(len(content)) {
 			t.Errorf("Expected size %d, got %d", len(content), size)
 		}
 
-		bytes, _ := io.ReadAll(rc)
+		bytes, err := io.ReadAll(rc)
+		if err != nil {
+			t.Fatalf("ReadAll failed: %v", err)
+		}
 		if string(bytes) != content {
 			t.Errorf("Expected content %q, got %q", content, string(bytes))
 		}
@@ -90,18 +95,28 @@ func TestLocalRepository(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		_, _ = fmt.Fprintf(w, "test")
+		if _, err := fmt.Fprintf(w, "test"); err != nil {
+			t.Fatalf("Fprintf failed: %v", err)
+		}
 		// Not calling w.Close()
 		err = commit()
 		if err != nil {
 			t.Fatalf("Commit failed when not closed: %v", err)
 		}
 		// Verify content
-		rc, _, _ := repo.Get(ctx, algo, hash2)
+		rc, _, err := repo.Get(ctx, algo, hash2)
+		if err != nil {
+			t.Fatalf("Get failed: %v", err)
+		}
 		defer func() {
-			_ = rc.Close()
+			if err := rc.Close(); err != nil {
+				t.Errorf("failed to close rc: %v", err)
+			}
 		}()
-		bytes, _ := io.ReadAll(rc)
+		bytes, err := io.ReadAll(rc)
+		if err != nil {
+			t.Fatalf("ReadAll failed: %v", err)
+		}
 		if string(bytes) != "test" {
 			t.Errorf("Content mismatch")
 		}

@@ -6,6 +6,8 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+
+	"github.com/lucasew/fetchurl/internal/errutil"
 	"sync/atomic"
 	"time"
 
@@ -133,7 +135,7 @@ func (m *Manager) RunEviction() {
 	for _, p := range m.policies {
 		toFree, err := p.BytesToFree(current)
 		if err != nil {
-			slog.Error("Failed to check capacity policy", "error", err)
+			errutil.ReportError(err, "Failed to check capacity policy")
 			continue
 		}
 		if toFree > maxToFree {
@@ -162,7 +164,7 @@ func (m *Manager) RunEviction() {
 		path := filepath.Join(m.cacheDir, victim.Key)
 		err := os.Remove(path)
 		if err != nil && !os.IsNotExist(err) {
-			slog.Error("Failed to remove file", "path", path, "error", err)
+			errutil.ReportError(err, "Failed to remove file", "path", path)
 			// Continue to next victim?
 			// If we can't remove, we shouldn't decrement size?
 			// But we remove from strategy to avoid loop.

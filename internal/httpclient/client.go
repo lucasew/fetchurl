@@ -3,9 +3,10 @@ package httpclient
 import (
 	"crypto/tls"
 	"crypto/x509"
-	"log/slog"
 	"net/http"
 	"time"
+
+	"github.com/lucasew/fetchurl/internal/errutil"
 )
 
 // NewClient creates an http.Client configured with custom CA certificate + system CAs.
@@ -27,7 +28,7 @@ func NewClient(caCert *tls.Certificate) *http.Client {
 		if err == nil {
 			rootCAs.AddCert(cert)
 		} else {
-			slog.Error("Failed to parse custom CA certificate", "error", err)
+			errutil.ReportError(err, "Failed to parse custom CA certificate")
 		}
 	}
 

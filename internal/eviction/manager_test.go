@@ -77,5 +77,7 @@ func createFile(t *testing.T, dir, name string, size int64) {
 	if err := f.Truncate(size); err != nil {
 		t.Fatalf("truncate failed: %v", err)
 	}
-	_ = f.Close()
+	if err := f.Close(); err != nil {
+		t.Fatalf("close failed: %v", err)
+	}
 }

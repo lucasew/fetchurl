@@ -56,7 +56,7 @@ func (h *CASHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// 1. Try Local Cache
 	exists, err := h.Local.Exists(r.Context(), algo, hash)
 	if err != nil {
-		slog.Error("Failed to check cache existence", "error", err)
+		errutil.ReportError(err, "Failed to check cache existence")
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return
 	}
@@ -109,11 +109,11 @@ func (h *CASHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		// If error occurred and we haven't written headers yet, send error response
 		if !headersWritten {
-			slog.Error("Fetch failed", "error", err)
+			errutil.ReportError(err, "Fetch failed")
 			http.Error(w, fmt.Sprintf("Failed to fetch: %v", err), http.StatusBadGateway)
 		} else {
 			// Headers already written, connection might be aborted or partial.
-			slog.Error("Fetch failed after headers written", "error", err)
+			errutil.ReportError(err, "Fetch failed after headers written")
 		}
 		return
 	}
@@ -128,7 +128,7 @@ func (h *CASHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 func (h *CASHandler) serveFromCache(w http.ResponseWriter, r *http.Request, algo, hash string) {
 	reader, size, err := h.Local.Get(r.Context(), algo, hash)
 	if err != nil {
-		slog.Error("Failed to get from cache", "hash", hash, "error", err)
+		errutil.ReportError(err, "Failed to get from cache", "hash", hash)
 		http.Error(w, "Failed to retrieve from cache", http.StatusInternalServerError)
 		return
 	}
@@ -237,7 +237,7 @@ func (h *CASHandler) tryFetchFromSource(ctx context.Context, w http.ResponseWrit
 	// 4. Verify Hash
 	actualHash := hex.EncodeToString(hasher.Sum(nil))
 	if actualHash != hash {
-		slog.Error("Hash mismatch", "expected", hash, "got", actualHash)
+		errutil.ReportError(fmt.Errorf("hash mismatch"), "Hash mismatch", "expected", hash, "got", actualHash)
 		panic(http.ErrAbortHandler)
 	}
 
@@ -248,7 +248,7 @@ func (h *CASHandler) tryFetchFromSource(ctx context.Context, w http.ResponseWrit
 
 	// 5. Commit
 	if err := commit(); err != nil {
-		slog.Error("Failed to commit file", "error", err)
+		errutil.ReportError(err, "Failed to commit file")
 		return err
 	}
 	committed = true

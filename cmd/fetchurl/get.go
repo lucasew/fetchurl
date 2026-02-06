@@ -49,7 +49,7 @@ var getCmd = &cobra.Command{
 		if output != "" {
 			file, err := os.Create(output)
 			if err != nil {
-				slog.Error("Failed to create output file", "error", err)
+				errutil.ReportError(err, "Failed to create output file")
 				os.Exit(1)
 			}
 			defer func() {
@@ -78,7 +78,7 @@ var getCmd = &cobra.Command{
 			URLs: urls,
 			Out:  io.MultiWriter(out, bar),
 		}); err != nil {
-			slog.Error("Fetch failed", "error", err)
+			errutil.ReportError(err, "Fetch failed")
 			if output != "" {
 				errutil.LogMsg(os.Remove(output), "Failed to remove output file after failed fetch", "path", output)
 			}
