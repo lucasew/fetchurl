@@ -1,0 +1,6 @@
+{
+  "name": "fetchurl-sdk",
+  "version": "0.1.0",
+  "type": "module",
+  "exports": "./fetchurl.js"
+}
