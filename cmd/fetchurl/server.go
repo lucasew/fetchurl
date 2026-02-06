@@ -2,11 +2,11 @@ package main
 
 import (
 	"fmt"
-	"log/slog"
 	"os"
 	"time"
 
 	"github.com/lucasew/fetchurl/internal/app"
+	"github.com/lucasew/fetchurl/internal/errutil"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
@@ -28,13 +28,13 @@ var serverCmd = &cobra.Command{
 
 		server, cleanup, err := app.NewServer(cmd.Context(), cfg)
 		if err != nil {
-			slog.Error("Failed to initialize server", "error", err)
+			errutil.ReportError(err, "Failed to initialize server")
 			os.Exit(1)
 		}
 		defer cleanup()
 
 		if err := server.ListenAndServe(); err != nil {
-			slog.Error("Server failed", "error", err)
+			errutil.ReportError(err, "Server failed")
 			os.Exit(1)
 		}
 	},

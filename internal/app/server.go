@@ -6,6 +6,8 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+
+	"github.com/lucasew/fetchurl/internal/errutil"
 	"time"
 
 	"github.com/lucasew/fetchurl/internal/eviction"
@@ -57,7 +59,7 @@ func NewServer(ctx context.Context, cfg Config) (*http.Server, func(), error) {
 	mgr := eviction.NewManager(cfg.CacheDir, policies, cfg.EvictionInterval, strat)
 
 	if err := mgr.LoadInitialState(); err != nil {
-		slog.Warn("Failed to load initial cache state", "error", err)
+		errutil.LogMsg(err, "Failed to load initial cache state")
 	}
 
 	// Use the context from Cobra, which is canceled on shutdown

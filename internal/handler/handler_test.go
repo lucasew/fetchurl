@@ -24,14 +24,20 @@ func TestCASHandler(t *testing.T) {
 	origin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/file1":
-			_, _ = w.Write([]byte("content1"))
+			if _, err := w.Write([]byte("content1")); err != nil {
+				t.Fatalf("failed to write content1: %v", err)
+			}
 		case "/file2":
-			_, _ = w.Write([]byte("content2"))
+			if _, err := w.Write([]byte("content2")); err != nil {
+				t.Fatalf("failed to write content2: %v", err)
+			}
 		case "/fail":
 			w.WriteHeader(http.StatusInternalServerError)
 		case "/big":
 			w.Header().Set("Content-Length", "10")
-			_, _ = w.Write([]byte("0123456789"))
+			if _, err := w.Write([]byte("0123456789")); err != nil {
+				t.Fatalf("failed to write big content: %v", err)
+			}
 		case "/no-len":
 			// Force chunked encoding to simulate missing Content-Length
 			w.Header().Set("Transfer-Encoding", "chunked")

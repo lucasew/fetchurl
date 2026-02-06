@@ -56,7 +56,7 @@ func (h *CASHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// 1. Try Local Cache
 	exists, err := h.Local.Exists(r.Context(), algo, hash)
 	if err != nil {
-		slog.Error("Failed to check cache existence", "error", err)
+		errutil.ReportError(err, "Failed to check cache existence")
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return
 	}
@@ -109,11 +109,11 @@ func (h *CASHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		// If error occurred and we haven't written headers yet, send error response
 		if !headersWritten {
-			slog.Error("Fetch failed", "error", err)
+			errutil.ReportError(err, "Fetch failed")
 			http.Error(w, fmt.Sprintf("Failed to fetch: %v", err), http.StatusBadGateway)
 		} else {
 			// Headers already written, connection might be aborted or partial.
-			slog.Error("Fetch failed after headers written", "error", err)
+			errutil.ReportError(err, "Fetch failed after headers written")
 		}
 		return
 	}
@@ -128,7 +128,7 @@ func (h *CASHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 func (h *CASHandler) serveFromCache(w http.ResponseWriter, r *http.Request, algo, hash string) {
 	reader, size, err := h.Local.Get(r.Context(), algo, hash)
 	if err != nil {
-		slog.Error("Failed to get from cache", "hash", hash, "error", err)
+		errutil.ReportError(err, "Failed to get from cache", "hash", hash)
 		http.Error(w, "Failed to retrieve from cache", http.StatusInternalServerError)
 		return
 	}
@@ -139,7 +139,7 @@ func (h *CASHandler) serveFromCache(w http.ResponseWriter, r *http.Request, algo
 	h.setCacheHeaders(w, algo, hash)
 	w.Header().Set("Content-Length", fmt.Sprintf("%d", size))
 	if _, err := io.Copy(w, reader); err != nil {
-		slog.Warn("Failed to copy from cache to response", "error", err)
+		errutil.LogMsg(err, "Failed to copy from cache to response")
 	}
 }
 
@@ -149,7 +149,7 @@ func (h *CASHandler) fetchAndStream(ctx context.Context, w http.ResponseWriter, 
 		if err == nil {
 			return nil
 		}
-		slog.Warn("Fetch from source failed", "url", source, "error", err)
+		errutil.LogMsg(err, "Fetch from source failed", "url", source)
 		if *headersWritten {
 			return fmt.Errorf("fetch failed after headers already written: %w", err)
 		}
@@ -175,7 +175,7 @@ func (h *CASHandler) tryFetchFromSource(ctx context.Context, w http.ResponseWrit
 		if err == nil {
 			req.Header.Set("X-Source-Urls", val)
 		} else {
-			slog.Warn("Failed to encode X-Source-Urls header", "error", err)
+			errutil.LogMsg(err, "Failed to encode X-Source-Urls header")
 		}
 	}
 
@@ -237,18 +237,18 @@ func (h *CASHandler) tryFetchFromSource(ctx context.Context, w http.ResponseWrit
 	// 4. Verify Hash
 	actualHash := hex.EncodeToString(hasher.Sum(nil))
 	if actualHash != hash {
-		slog.Error("Hash mismatch", "expected", hash, "got", actualHash)
+		errutil.ReportError(fmt.Errorf("hash mismatch"), "Hash mismatch", "expected", hash, "got", actualHash)
 		panic(http.ErrAbortHandler)
 	}
 
 	if resp.ContentLength > 0 && written != resp.ContentLength {
-		slog.Warn("Size mismatch", "expected", resp.ContentLength, "got", written)
+		errutil.ReportError(fmt.Errorf("size mismatch"), "Size mismatch", "expected", resp.ContentLength, "got", written)
 		panic(http.ErrAbortHandler)
 	}
 
 	// 5. Commit
 	if err := commit(); err != nil {
-		slog.Error("Failed to commit file", "error", err)
+		errutil.ReportError(err, "Failed to commit file")
 		return err
 	}
 	committed = true
@@ -265,7 +265,7 @@ func (h *CASHandler) parseSourceUrls(headers http.Header) []string {
 
 	list, err := sfv.DecodeList(values)
 	if err != nil {
-		slog.Warn("Failed to parse X-Source-Urls header", "error", err)
+		errutil.LogMsg(err, "Failed to parse X-Source-Urls header")
 		return urls
 	}
 

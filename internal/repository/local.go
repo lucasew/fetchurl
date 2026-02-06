@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/lucasew/fetchurl/internal/errutil"
 	"github.com/lucasew/fetchurl/internal/eviction"
 )
 
@@ -57,7 +58,7 @@ func (r *LocalRepository) Get(ctx context.Context, algo, hash string) (io.ReadCl
 	}
 	info, err := f.Stat()
 	if err != nil {
-		_ = f.Close()
+		errutil.ReportError(f.Close(), "Failed to close file after stat error", "path", path)
 		return nil, 0, err
 	}
 	if r.eviction != nil {
@@ -106,7 +107,7 @@ func (r *LocalRepository) BeginWrite(algo, hash string) (io.WriteCloser, func() 
 		if r.eviction != nil {
 			info, err := os.Stat(finalPath)
 			if err != nil {
-				slog.Error("Failed to stat committed file", "path", finalPath, "error", err)
+				errutil.ReportError(err, "Failed to stat committed file", "path", finalPath)
 			} else {
 				r.eviction.Add(r.getRelPath(algo, hash), info.Size())
 				slog.Info("Stored file", "algo", algo, "hash", hash, "size", info.Size())
@@ -115,21 +116,6 @@ func (r *LocalRepository) BeginWrite(algo, hash string) (io.WriteCloser, func() 
 
 		return nil
 	}
-
-	// Wrapper to handle cleanup if not committed (e.g. on error)
-	// But io.WriteCloser is just the file. The caller is responsible for deleting temp file if commit is not called?
-	// Or we can return a cleanup function too?
-	// The pattern `(writer, commit, error)` implies if commit is NOT called, we should cleanup manually or rely on OS?
-	// Standard practice: if commit is called, it moves. If not, the temp file stays.
-	// I should probably clean up if `Close` is called without Commit?
-	// But `tmpFile` IS the WriteCloser.
-
-	// Let's implement a wrapper around the file to handle cleanup?
-	// Or just let the caller handle it?
-	// The `tempFile` has a `Name()`.
-	// The caller should defer `os.Remove(tmpFile.Name())`.
-	// But `BeginWrite` returns `io.WriteCloser`. The caller doesn't know the name easily unless I return `*os.File`.
-	// I'll return `*os.File` which satisfies `io.WriteCloser`.
 
 	return tmpFile, commit, nil
 }
