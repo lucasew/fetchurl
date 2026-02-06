@@ -1,13 +1,16 @@
 package main
 
 import (
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
 	"os"
+	"time"
 
+	"github.com/lucasew/fetchurl"
 	"github.com/lucasew/fetchurl/internal/errutil"
-	"github.com/lucasew/fetchurl/internal/fetcher"
+	"github.com/schollz/progressbar/v3"
 	"github.com/shogo82148/go-sfv"
 	"github.com/spf13/cobra"
 )
@@ -40,7 +43,7 @@ var getCmd = &cobra.Command{
 
 		client := http.DefaultClient
 
-		f := fetcher.NewFetcher(client, servers)
+		f := fetchurl.NewFetcher(client, servers)
 
 		var out io.Writer
 		if output != "" {
@@ -57,11 +60,23 @@ var getCmd = &cobra.Command{
 			out = os.Stdout
 		}
 
-		if err := f.Fetch(cmd.Context(), fetcher.FetchOptions{
+		bar := progressbar.NewOptions64(
+			-1,
+			progressbar.OptionSetWriter(os.Stderr),
+			progressbar.OptionSetDescription("downloading"),
+			progressbar.OptionShowBytes(true),
+			progressbar.OptionSetWidth(10),
+			progressbar.OptionThrottle(65*time.Millisecond),
+			progressbar.OptionOnCompletion(func() {
+				fmt.Fprint(os.Stderr, "\n")
+			}),
+		)
+
+		if err := f.Fetch(cmd.Context(), fetchurl.FetchOptions{
 			Algo: algo,
 			Hash: hash,
 			URLs: urls,
-			Out:  out,
+			Out:  io.MultiWriter(out, bar),
 		}); err != nil {
 			slog.Error("Fetch failed", "error", err)
 			if output != "" {

@@ -1,9 +1,10 @@
-package fetcher
+package fetchurl
 
 import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -59,6 +60,12 @@ func TestFetcher(t *testing.T) {
 		})
 		if err == nil {
 			t.Fatal("expected error, got nil")
+		}
+		if !errors.Is(err, ErrPartialWrite) {
+			t.Errorf("expected ErrPartialWrite, got %v", err)
+		}
+		if !errors.Is(err, ErrHashMismatch) {
+			t.Errorf("expected ErrHashMismatch, got %v", err)
 		}
 	})
 
@@ -146,9 +153,6 @@ func TestFetcher(t *testing.T) {
 		defer source.Close()
 
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// Write some partial content then fail
-			// To simulate "fail after write", we can't easily hijack the connection here cleanly without panicking/closing.
-			// But we can send wrong content which will cause hash mismatch after writing.
 			w.Write([]byte("partial"))
 		}))
 		defer server.Close()
@@ -162,14 +166,71 @@ func TestFetcher(t *testing.T) {
 			Out:  &out,
 		})
 
-		// It should fail and NOT fallback to source because we wrote partial data from server
 		if err == nil {
 			t.Fatal("expected error, got nil")
 		}
+		if !errors.Is(err, ErrPartialWrite) {
+			t.Errorf("expected ErrPartialWrite, got %v", err)
+		}
 
-		// The buffer should contain only the partial data from server
 		if out.String() != "partial" {
 			t.Errorf("got %q, want %q", out.String(), "partial")
+		}
+	})
+
+	t.Run("Unsupported Algorithm", func(t *testing.T) {
+		f := NewFetcher(nil, nil)
+		var out bytes.Buffer
+		err := f.Fetch(t.Context(), FetchOptions{
+			Algo: "md4",
+			Hash: "abc",
+			URLs: []string{"http://example.com"},
+			Out:  &out,
+		})
+		if !errors.Is(err, ErrUnsupportedAlgorithm) {
+			t.Errorf("expected ErrUnsupportedAlgorithm, got %v", err)
+		}
+	})
+
+	t.Run("All Sources Failed", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(404)
+		}))
+		defer server.Close()
+
+		f := NewFetcher(nil, nil)
+		var out bytes.Buffer
+		err := f.Fetch(t.Context(), FetchOptions{
+			Algo: "sha256",
+			Hash: hash,
+			URLs: []string{server.URL},
+			Out:  &out,
+		})
+		if !errors.Is(err, ErrAllSourcesFailed) {
+			t.Errorf("expected ErrAllSourcesFailed, got %v", err)
+		}
+	})
+
+	t.Run("HTTP Status Error", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(403)
+		}))
+		defer server.Close()
+
+		f := NewFetcher(nil, nil)
+		var out bytes.Buffer
+		err := f.Fetch(t.Context(), FetchOptions{
+			Algo: "sha256",
+			Hash: hash,
+			URLs: []string{server.URL},
+			Out:  &out,
+		})
+		var httpErr *HTTPStatusError
+		if !errors.As(err, &httpErr) {
+			t.Fatalf("expected HTTPStatusError, got %T: %v", err, err)
+		}
+		if httpErr.StatusCode != 403 {
+			t.Errorf("expected status 403, got %d", httpErr.StatusCode)
 		}
 	})
 }

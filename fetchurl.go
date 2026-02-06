@@ -1,21 +1,43 @@
-package fetcher
+package fetchurl
 
 import (
 	"context"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
-	"os"
 	"strings"
-	"time"
 
 	"github.com/lucasew/fetchurl/internal/errutil"
 	"github.com/lucasew/fetchurl/internal/hashutil"
-	"github.com/schollz/progressbar/v3"
 	"github.com/shogo82148/go-sfv"
 )
+
+var (
+	// ErrUnsupportedAlgorithm is returned when the requested hash algorithm is not supported.
+	ErrUnsupportedAlgorithm = errors.New("unsupported algorithm")
+
+	// ErrHashMismatch is returned when the downloaded content does not match the expected hash.
+	ErrHashMismatch = errors.New("hash mismatch")
+
+	// ErrPartialWrite is returned when data was already written to Out before a failure occurred,
+	// making fallback to another source unsafe.
+	ErrPartialWrite = errors.New("partial write")
+
+	// ErrAllSourcesFailed is returned when no server or direct source could provide the content.
+	ErrAllSourcesFailed = errors.New("all sources failed")
+)
+
+// HTTPStatusError is returned when a source responds with a non-200 status code.
+type HTTPStatusError struct {
+	StatusCode int
+}
+
+func (e *HTTPStatusError) Error() string {
+	return fmt.Sprintf("unexpected status %d", e.StatusCode)
+}
 
 type Fetcher struct {
 	Client  *http.Client
@@ -41,44 +63,48 @@ func NewFetcher(client *http.Client, servers []string) *Fetcher {
 
 func (f *Fetcher) Fetch(ctx context.Context, opts FetchOptions) error {
 	if !hashutil.IsSupported(opts.Algo) {
-		return fmt.Errorf("unsupported algorithm: %s", opts.Algo)
+		return fmt.Errorf("%w: %s", ErrUnsupportedAlgorithm, opts.Algo)
 	}
 
-	cw := &CountingWriter{Writer: opts.Out}
+	cw := &countingWriter{Writer: opts.Out}
+	var lastErr error
 
 	// 1. Try Servers
 	for _, server := range f.Servers {
-		err := f.fetchFromServer(ctx, server, opts.Algo, opts.Hash, opts.URLs, cw)
-		if err == nil {
+		lastErr = f.fetchFromServer(ctx, server, opts.Algo, opts.Hash, opts.URLs, cw)
+		if lastErr == nil {
 			return nil
 		}
-		slog.Warn("Failed to fetch from server", "server", server, "error", err)
+		slog.Warn("Failed to fetch from server", "server", server, "error", lastErr)
 		if cw.N > 0 {
-			return fmt.Errorf("failed during download from server (partial write): %w", err)
+			return fmt.Errorf("%w: %w", ErrPartialWrite, lastErr)
 		}
 	}
 
 	// 2. Fallback to Direct Download
 	for _, url := range opts.URLs {
-		err := f.fetchDirect(ctx, url, opts.Algo, opts.Hash, cw)
-		if err == nil {
+		lastErr = f.fetchDirect(ctx, url, opts.Algo, opts.Hash, cw)
+		if lastErr == nil {
 			return nil
 		}
-		slog.Warn("Failed to fetch from source", "url", url, "error", err)
+		slog.Warn("Failed to fetch from source", "url", url, "error", lastErr)
 		if cw.N > 0 {
-			return fmt.Errorf("failed during download from source (partial write): %w", err)
+			return fmt.Errorf("%w: %w", ErrPartialWrite, lastErr)
 		}
 	}
 
-	return fmt.Errorf("failed to fetch file from any source")
+	if lastErr != nil {
+		return fmt.Errorf("%w: %w", ErrAllSourcesFailed, lastErr)
+	}
+	return ErrAllSourcesFailed
 }
 
-type CountingWriter struct {
+type countingWriter struct {
 	Writer io.Writer
 	N      int64
 }
 
-func (c *CountingWriter) Write(p []byte) (n int, err error) {
+func (c *countingWriter) Write(p []byte) (n int, err error) {
 	n, err = c.Writer.Write(p)
 	c.N += int64(n)
 	return n, err
@@ -126,26 +152,14 @@ func (f *Fetcher) doRequest(req *http.Request, algo, expectedHash string, out io
 	}()
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("status %d", resp.StatusCode)
+		return &HTTPStatusError{StatusCode: resp.StatusCode}
 	}
-
-	bar := progressbar.NewOptions64(
-		resp.ContentLength,
-		progressbar.OptionSetWriter(os.Stderr),
-		progressbar.OptionSetDescription("downloading"),
-		progressbar.OptionShowBytes(true),
-		progressbar.OptionSetWidth(10),
-		progressbar.OptionThrottle(65*time.Millisecond),
-		progressbar.OptionOnCompletion(func() {
-			fmt.Fprint(os.Stderr, "\n")
-		}),
-	)
 
 	hasher, err := hashutil.GetHasher(algo)
 	if err != nil {
 		return err
 	}
-	mw := io.MultiWriter(out, hasher, bar)
+	mw := io.MultiWriter(out, hasher)
 
 	if _, err := io.Copy(mw, resp.Body); err != nil {
 		return err
@@ -153,7 +167,7 @@ func (f *Fetcher) doRequest(req *http.Request, algo, expectedHash string, out io
 
 	actualHash := hex.EncodeToString(hasher.Sum(nil))
 	if actualHash != expectedHash {
-		return fmt.Errorf("hash mismatch: expected %s, got %s", expectedHash, actualHash)
+		return fmt.Errorf("%w: expected %s, got %s", ErrHashMismatch, expectedHash, actualHash)
 	}
 
 	return nil
