@@ -139,7 +139,7 @@ func (h *CASHandler) serveFromCache(w http.ResponseWriter, r *http.Request, algo
 	h.setCacheHeaders(w, algo, hash)
 	w.Header().Set("Content-Length", fmt.Sprintf("%d", size))
 	if _, err := io.Copy(w, reader); err != nil {
-		slog.Warn("Failed to copy from cache to response", "error", err)
+		errutil.LogMsg(err, "Failed to copy from cache to response")
 	}
 }
 
@@ -149,7 +149,7 @@ func (h *CASHandler) fetchAndStream(ctx context.Context, w http.ResponseWriter, 
 		if err == nil {
 			return nil
 		}
-		slog.Warn("Fetch from source failed", "url", source, "error", err)
+		errutil.LogMsg(err, "Fetch from source failed", "url", source)
 		if *headersWritten {
 			return fmt.Errorf("fetch failed after headers already written: %w", err)
 		}
@@ -175,7 +175,7 @@ func (h *CASHandler) tryFetchFromSource(ctx context.Context, w http.ResponseWrit
 		if err == nil {
 			req.Header.Set("X-Source-Urls", val)
 		} else {
-			slog.Warn("Failed to encode X-Source-Urls header", "error", err)
+			errutil.LogMsg(err, "Failed to encode X-Source-Urls header")
 		}
 	}
 
@@ -242,7 +242,7 @@ func (h *CASHandler) tryFetchFromSource(ctx context.Context, w http.ResponseWrit
 	}
 
 	if resp.ContentLength > 0 && written != resp.ContentLength {
-		slog.Warn("Size mismatch", "expected", resp.ContentLength, "got", written)
+		errutil.ReportError(fmt.Errorf("size mismatch"), "Size mismatch", "expected", resp.ContentLength, "got", written)
 		panic(http.ErrAbortHandler)
 	}
 
@@ -265,7 +265,7 @@ func (h *CASHandler) parseSourceUrls(headers http.Header) []string {
 
 	list, err := sfv.DecodeList(values)
 	if err != nil {
-		slog.Warn("Failed to parse X-Source-Urls header", "error", err)
+		errutil.LogMsg(err, "Failed to parse X-Source-Urls header")
 		return urls
 	}
 

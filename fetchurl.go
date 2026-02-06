@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log/slog"
 	"net/http"
 	"strings"
 
@@ -75,7 +74,7 @@ func (f *Fetcher) Fetch(ctx context.Context, opts FetchOptions) error {
 		if lastErr == nil {
 			return nil
 		}
-		slog.Warn("Failed to fetch from server", "server", server, "error", lastErr)
+		errutil.LogMsg(lastErr, "Failed to fetch from server", "server", server)
 		if cw.N > 0 {
 			return fmt.Errorf("%w: %w", ErrPartialWrite, lastErr)
 		}
@@ -87,7 +86,7 @@ func (f *Fetcher) Fetch(ctx context.Context, opts FetchOptions) error {
 		if lastErr == nil {
 			return nil
 		}
-		slog.Warn("Failed to fetch from source", "url", url, "error", lastErr)
+		errutil.LogMsg(lastErr, "Failed to fetch from source", "url", url)
 		if cw.N > 0 {
 			return fmt.Errorf("%w: %w", ErrPartialWrite, lastErr)
 		}

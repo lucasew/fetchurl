@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"io"
-	"log/slog"
 	"net/http"
 	"os"
 	"time"
@@ -22,8 +21,16 @@ var getCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		algo := args[0]
 		hash := args[1]
-		urls, _ := cmd.Flags().GetStringSlice("url")
-		output, _ := cmd.Flags().GetString("output")
+		urls, err := cmd.Flags().GetStringSlice("url")
+		if err != nil {
+			errutil.ReportError(err, "Failed to get url flag")
+			os.Exit(1)
+		}
+		output, err := cmd.Flags().GetString("output")
+		if err != nil {
+			errutil.ReportError(err, "Failed to get output flag")
+			os.Exit(1)
+		}
 
 		// Parse FETCHURL_SERVER
 		var servers []string
@@ -31,7 +38,7 @@ var getCmd = &cobra.Command{
 		if envServer != "" {
 			list, err := sfv.DecodeList([]string{envServer})
 			if err != nil {
-				slog.Warn("Failed to parse FETCHURL_SERVER", "error", err)
+				errutil.LogMsg(err, "Failed to parse FETCHURL_SERVER")
 			} else {
 				for _, item := range list {
 					if s, ok := item.Value.(string); ok {
@@ -68,7 +75,9 @@ var getCmd = &cobra.Command{
 			progressbar.OptionSetWidth(10),
 			progressbar.OptionThrottle(65*time.Millisecond),
 			progressbar.OptionOnCompletion(func() {
-				fmt.Fprint(os.Stderr, "\n")
+				if _, err := fmt.Fprint(os.Stderr, "\n"); err != nil {
+					errutil.LogMsg(err, "Failed to print newline to stderr")
+				}
 			}),
 		)
 

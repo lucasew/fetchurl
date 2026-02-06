@@ -62,13 +62,13 @@ func (m *Manager) LoadInitialState() error {
 
 		info, err := d.Info()
 		if err != nil {
-			slog.Warn("Failed to get file info", "file", path, "error", err)
+			errutil.LogMsg(err, "Failed to get file info", "file", path)
 			return nil
 		}
 
 		rel, err := filepath.Rel(m.cacheDir, path)
 		if err != nil {
-			slog.Warn("Failed to get relative path", "path", path, "error", err)
+			errutil.LogMsg(err, "Failed to get relative path", "path", path)
 			return nil
 		}
 
