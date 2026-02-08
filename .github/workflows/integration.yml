@@ -1,0 +1,36 @@
+name: Integration Tests
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  integration-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+
+      - name: Install mise
+        uses: jdx/mise-action@v2
+        with:
+          version: latest
+
+      - name: Install Dependencies
+        run: mise install
+
+      - name: Pull Docker Images
+        run: |
+          docker pull jdxcode/mise:latest
+          docker pull alpine:latest
+
+      - name: Run Integration Tests
+        run: go test -v ./test/integration/...
