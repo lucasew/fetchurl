@@ -2,5 +2,17 @@
   "name": "fetchurl-sdk",
   "version": "0.1.0",
   "type": "module",
-  "exports": "./fetchurl.js"
+  "exports": "./fetchurl.js",
+  "scripts": {
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "test": "node --test"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.19.0",
+    "eslint": "^9.19.0",
+    "eslint-config-prettier": "^10.0.1",
+    "globals": "^15.14.0",
+    "prettier": "^3.4.2"
+  }
 }

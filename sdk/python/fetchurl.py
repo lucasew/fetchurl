@@ -28,7 +28,6 @@ Three levels of usage:
 from __future__ import annotations
 
 import hashlib
-import os
 import random
 import re
 from collections.abc import AsyncIterator

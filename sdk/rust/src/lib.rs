@@ -10,12 +10,12 @@
 //! ```no_run
 //! use std::io;
 //!
-//! let servers = fetchurl::parse_fetchurl_server(
+//! let servers = fetchurl_sdk::parse_fetchurl_server(
 //!     &std::env::var("FETCHURL_SERVER").unwrap_or_default(),
 //! );
 //! let source_urls = vec!["https://cdn.example.com/file.tar.gz"];
 //!
-//! let mut session = fetchurl::FetchSession::new(
+//! let mut session = fetchurl_sdk::FetchSession::new(
 //!     &servers, "sha256", "e3b0c44...", &source_urls,
 //! ).unwrap();
 //!
@@ -328,7 +328,12 @@ impl HasherInner {
 }
 
 fn to_hex(bytes: &[u8]) -> String {
-    bytes.iter().map(|b| format!("{b:02x}")).collect()
+    use std::fmt::Write;
+    let mut s = String::with_capacity(bytes.len() * 2);
+    for b in bytes {
+        write!(&mut s, "{b:02x}").unwrap();
+    }
+    s
 }
 
 // --- HashVerifier ---

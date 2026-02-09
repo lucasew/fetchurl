@@ -1,16 +1,52 @@
 [tools]
-go = "1.25.6"
+go = "1.24.3"
 "go:golang.org/x/tools/gopls" = "0.21.0"
 golangci-lint = "2.8.0"
 actionlint = "1.7.10"
 node = "22.13.0"
+python = "3.13.1"
+uv = "0.5.26"
+rust = "1.84.0"
+ruff = "0.9.4"
+
+[tasks."install:go"]
+run = "go get ./..."
+description = "Install Go dependencies"
+
+[tasks."install:js"]
+run = "cd sdk/js && npm install"
+description = "Install JS dependencies"
+
+[tasks."install:python"]
+run = "cd sdk/python && uv sync"
+description = "Install Python dependencies"
+
+[tasks."install:rust"]
+run = "cd sdk/rust && cargo fetch"
+description = "Install Rust dependencies"
+
+[tasks.install]
+depends = ["install:*"]
+description = "Install all dependencies"
 
 [tasks."lint:go"]
 run = "golangci-lint run ./..."
 description = "Lint Go code"
 
+[tasks."lint:js"]
+run = "cd sdk/js && npm run lint"
+description = "Lint JS code"
+
+[tasks."lint:python"]
+run = "cd sdk/python && uv run ruff check ."
+description = "Lint Python code"
+
+[tasks."lint:rust"]
+run = "cd sdk/rust && cargo clippy -- -D warnings"
+description = "Lint Rust code"
+
 [tasks."lint:md"]
-run = "npx markdownlint-cli2 \"**/*.md\" \"#node_modules\""
+run = "npx markdownlint-cli2 \"**/*.md\" \"#**/node_modules\""
 description = "Lint Markdown files"
 
 [tasks.lint]
@@ -21,18 +57,46 @@ description = "Run all linters"
 run = "go fmt ./..."
 description = "Format Go code"
 
+[tasks."fmt:js"]
+run = "cd sdk/js && npm run format"
+description = "Format JS code"
+
+[tasks."fmt:python"]
+run = "cd sdk/python && uv run ruff format ."
+description = "Format Python code"
+
+[tasks."fmt:rust"]
+run = "cd sdk/rust && cargo fmt"
+description = "Format Rust code"
+
 [tasks.fmt]
 depends = ["fmt:*"]
 description = "Format all code"
 
-[tasks.test]
+[tasks."test:go"]
 run = "go test -v ./..."
-description = "Run tests"
+description = "Run Go tests"
+
+[tasks."test:js"]
+run = "cd sdk/js && npm test"
+description = "Run JS tests"
+
+[tasks."test:python"]
+run = "cd sdk/python && uv run pytest"
+description = "Run Python tests"
+
+[tasks."test:rust"]
+run = "cd sdk/rust && cargo test"
+description = "Run Rust tests"
+
+[tasks.test]
+depends = ["test:*"]
+description = "Run all tests"
 
 [tasks.ci]
 depends = ["lint", "test"]
 description = "Run CI pipeline"
 
-[tasks]
-codegen = "true"
-install = "go get ./..."
+[tasks.codegen]
+run = "echo 'No codegen needed yet'"
+description = "Run code generation"

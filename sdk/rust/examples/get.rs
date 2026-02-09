@@ -36,11 +36,11 @@ fn main() {
     let servers = std::env::var("FETCHURL_SERVER")
         .ok()
         .filter(|v| !v.is_empty())
-        .map(|v| fetchurl::parse_fetchurl_server(&v))
+        .map(|v| fetchurl_sdk::parse_fetchurl_server(&v))
         .unwrap_or_default();
 
     let mut session =
-        match fetchurl::FetchSession::new(&servers, &cli.algo, &cli.hash, &cli.urls) {
+        match fetchurl_sdk::FetchSession::new(&servers, &cli.algo, &cli.hash, &cli.urls) {
             Ok(s) => s,
             Err(e) => {
                 eprintln!("error: {e}");
