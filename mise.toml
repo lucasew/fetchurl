@@ -25,7 +25,7 @@ run = "cd sdk/python && uv sync"
 description = "Install Python dependencies"
 
 [tasks."install:rust"]
-run = "cd sdk/rust && cargo fetch"
+run = "rustup component add clippy && cd sdk/rust && cargo fetch"
 description = "Install Rust dependencies"
 
 [tasks.install]
