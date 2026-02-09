@@ -9,6 +9,9 @@ uv = "0.5.26"
 rust = "1.84.0"
 ruff = "0.9.4"
 
+[settings]
+experimental = true
+
 [tasks."install:go"]
 run = "go get ./..."
 description = "Install Go dependencies"
