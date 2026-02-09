@@ -12,9 +12,6 @@ ruff = "0.9.4"
 [settings]
 experimental = true
 
-[env]
-RUSTUP_COMPONENTS = "clippy rustfmt"
-
 [tasks."install:go"]
 run = "go get ./..."
 description = "Install Go dependencies"
@@ -28,7 +25,7 @@ run = "cd sdk/python && uv sync"
 description = "Install Python dependencies"
 
 [tasks."install:rust"]
-run = "cd sdk/rust && cargo fetch"
+run = "rustup component add clippy rustfmt && cd sdk/rust && cargo fetch"
 description = "Install Rust dependencies"
 
 [tasks.install]
