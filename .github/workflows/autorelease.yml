@@ -21,8 +21,6 @@ jobs:
           fetch-depth: 0
 
       - uses: jdx/mise-action@v3
-        with:
-          version: 2025.1.7
 
       - name: Install
         run: mise run install
