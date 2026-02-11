@@ -24,7 +24,9 @@ func TestFetcher(t *testing.T) {
 
 	t.Run("Direct Download Success", func(t *testing.T) {
 		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.Write(content)
+			if _, err := w.Write(content); err != nil {
+				t.Errorf("failed to write content: %v", err)
+			}
 		}))
 		defer ts.Close()
 
@@ -46,7 +48,9 @@ func TestFetcher(t *testing.T) {
 
 	t.Run("Direct Download Hash Mismatch", func(t *testing.T) {
 		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.Write([]byte("wrong content"))
+			if _, err := w.Write([]byte("wrong content")); err != nil {
+				t.Errorf("failed to write content: %v", err)
+			}
 		}))
 		defer ts.Close()
 
@@ -99,7 +103,9 @@ func TestFetcher(t *testing.T) {
 				t.Errorf("X-Source-Urls missing source URL, got %v", val)
 			}
 
-			w.Write(content)
+			if _, err := w.Write(content); err != nil {
+				t.Errorf("failed to write content: %v", err)
+			}
 		}))
 		defer server.Close()
 
@@ -121,7 +127,9 @@ func TestFetcher(t *testing.T) {
 
 	t.Run("Server Fail Fallback", func(t *testing.T) {
 		source := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.Write(content)
+			if _, err := w.Write(content); err != nil {
+				t.Errorf("failed to write content: %v", err)
+			}
 		}))
 		defer source.Close()
 
@@ -148,12 +156,16 @@ func TestFetcher(t *testing.T) {
 
 	t.Run("Partial Download No Fallback", func(t *testing.T) {
 		source := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.Write(content)
+			if _, err := w.Write(content); err != nil {
+				t.Errorf("failed to write content: %v", err)
+			}
 		}))
 		defer source.Close()
 
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.Write([]byte("partial"))
+			if _, err := w.Write([]byte("partial")); err != nil {
+				t.Errorf("failed to write content: %v", err)
+			}
 		}))
 		defer server.Close()
 
