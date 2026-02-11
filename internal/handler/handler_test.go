@@ -25,25 +25,25 @@ func TestCASHandler(t *testing.T) {
 		switch r.URL.Path {
 		case "/file1":
 			if _, err := w.Write([]byte("content1")); err != nil {
-				t.Fatalf("failed to write content1: %v", err)
+				t.Errorf("failed to write content1: %v", err)
 			}
 		case "/file2":
 			if _, err := w.Write([]byte("content2")); err != nil {
-				t.Fatalf("failed to write content2: %v", err)
+				t.Errorf("failed to write content2: %v", err)
 			}
 		case "/fail":
 			w.WriteHeader(http.StatusInternalServerError)
 		case "/big":
 			w.Header().Set("Content-Length", "10")
 			if _, err := w.Write([]byte("0123456789")); err != nil {
-				t.Fatalf("failed to write big content: %v", err)
+				t.Errorf("failed to write big content: %v", err)
 			}
 		case "/no-len":
 			// Force chunked encoding to simulate missing Content-Length
 			w.Header().Set("Transfer-Encoding", "chunked")
 			w.WriteHeader(http.StatusOK)
 			if _, err := w.Write([]byte("content")); err != nil {
-				t.Fatalf("failed to write content: %v", err)
+				t.Errorf("failed to write content: %v", err)
 			}
 		default:
 			w.WriteHeader(http.StatusNotFound)
