@@ -42,7 +42,9 @@ func TestCASHandler(t *testing.T) {
 			// Force chunked encoding to simulate missing Content-Length
 			w.Header().Set("Transfer-Encoding", "chunked")
 			w.WriteHeader(http.StatusOK)
-			w.Write([]byte("content"))
+			if _, err := w.Write([]byte("content")); err != nil {
+				t.Fatalf("failed to write no-len content: %v", err)
+			}
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}
