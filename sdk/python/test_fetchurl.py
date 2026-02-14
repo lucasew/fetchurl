@@ -2,9 +2,11 @@
 
 import hashlib
 import io
+import os
 import unittest
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from threading import Thread
+from unittest.mock import patch
 
 import fetchurl
 
@@ -85,12 +87,13 @@ class TestHashVerifier(unittest.TestCase):
 class TestFetchSession(unittest.TestCase):
     def test_unsupported_algo(self):
         with self.assertRaises(fetchurl.UnsupportedAlgorithmError):
-            fetchurl.FetchSession([], "md5", "abc", ["http://src"])
+            fetchurl.FetchSession("md5", "abc", ["http://src"])
 
+    @patch.dict(os.environ, {"FETCHURL_SERVER": '"http://cache1", "http://cache2"'})
     def test_attempt_ordering(self):
         h = sha256hex(b"test")
         session = fetchurl.FetchSession(
-            ["http://cache1", "http://cache2"], "sha256", h, ["http://src1"]
+            "sha256", h, ["http://src1"]
         )
 
         a1 = session.next_attempt()
@@ -108,17 +111,19 @@ class TestFetchSession(unittest.TestCase):
         self.assertIsNone(session.next_attempt())
         self.assertFalse(session.succeeded())
 
+    @patch.dict(os.environ, {"FETCHURL_SERVER": '"http://cache"'})
     def test_success_stops(self):
         h = sha256hex(b"test")
-        session = fetchurl.FetchSession(["http://cache"], "sha256", h, ["http://src"])
+        session = fetchurl.FetchSession("sha256", h, ["http://src"])
         session.next_attempt()
         session.report_success()
         self.assertTrue(session.succeeded())
         self.assertIsNone(session.next_attempt())
 
+    @patch.dict(os.environ, {"FETCHURL_SERVER": '"http://cache"'})
     def test_partial_stops(self):
         h = sha256hex(b"test")
-        session = fetchurl.FetchSession(["http://cache"], "sha256", h, ["http://src"])
+        session = fetchurl.FetchSession("sha256", h, ["http://src"])
         session.next_attempt()
         session.report_partial()
         self.assertFalse(session.succeeded())
@@ -152,7 +157,9 @@ class TestFetch(unittest.TestCase):
         server, url = self._start_server(Handler)
         try:
             out = io.BytesIO()
-            fetchurl.fetch(fetchurl.UrllibFetcher(), [], "sha256", h, [url], out)
+            # Empty servers (env var not set by default/or empty)
+            with patch.dict(os.environ, {}, clear=True):
+                fetchurl.fetch(fetchurl.UrllibFetcher(), "sha256", h, [url], out)
             self.assertEqual(out.getvalue(), content)
         finally:
             server.shutdown()
@@ -171,9 +178,10 @@ class TestFetch(unittest.TestCase):
         try:
             out = io.BytesIO()
             with self.assertRaises(fetchurl.PartialWriteError):
-                fetchurl.fetch(
-                    fetchurl.UrllibFetcher(), [], "sha256", sha256hex(b"right"), [url], out
-                )
+                with patch.dict(os.environ, {}, clear=True):
+                    fetchurl.fetch(
+                        fetchurl.UrllibFetcher(), "sha256", sha256hex(b"right"), [url], out
+                    )
         finally:
             server.shutdown()
 
@@ -190,9 +198,10 @@ class TestFetch(unittest.TestCase):
         try:
             out = io.BytesIO()
             with self.assertRaises(fetchurl.AllSourcesFailedError):
-                fetchurl.fetch(
-                    fetchurl.UrllibFetcher(), [], "sha256", sha256hex(b"x"), [url], out
-                )
+                with patch.dict(os.environ, {}, clear=True):
+                    fetchurl.fetch(
+                        fetchurl.UrllibFetcher(), "sha256", sha256hex(b"x"), [url], out
+                    )
         finally:
             server.shutdown()
 
@@ -221,9 +230,11 @@ class TestFetch(unittest.TestCase):
         good, good_url = self._start_server(GoodSource)
         try:
             out = io.BytesIO()
-            fetchurl.fetch(
-                fetchurl.UrllibFetcher(), [bad_url], "sha256", h, [good_url], out
-            )
+            # Set server via env var
+            with patch.dict(os.environ, {"FETCHURL_SERVER": f'"{bad_url}"'}):
+                fetchurl.fetch(
+                    fetchurl.UrllibFetcher(), "sha256", h, [good_url], out
+                )
             self.assertEqual(out.getvalue(), content)
         finally:
             bad.shutdown()

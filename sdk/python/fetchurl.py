@@ -8,7 +8,7 @@ Zero dependencies — uses only the Python standard library.
 Three levels of usage:
 
   # 1. One-liner with stdlib
-  fetchurl.fetch(UrllibFetcher(), servers, "sha256", hash, urls, output)
+  fetchurl.fetch(UrllibFetcher(), "sha256", hash, urls, output)
 
   # 2. Custom HTTP client — implement the Fetcher protocol
   class MyFetcher:
@@ -16,10 +16,10 @@ Three levels of usage:
           resp = requests.get(url, headers=headers, stream=True)
           return (resp.status_code, resp.raw)
 
-  fetchurl.fetch(MyFetcher(), servers, "sha256", hash, urls, output)
+  fetchurl.fetch(MyFetcher(), "sha256", hash, urls, output)
 
   # 3. Low-level — drive the state machine yourself
-  session = FetchSession(servers, "sha256", hash, urls)
+  session = FetchSession("sha256", hash, urls)
   while attempt := session.next_attempt():
       # make HTTP request with whatever library you want
       ...
@@ -207,11 +207,11 @@ class FetchSession:
 
     def __init__(
         self,
-        servers: list[str],
         algo: str,
         hash: str,
         source_urls: list[str],
     ):
+        servers = parse_fetchurl_server(os.environ.get("FETCHURL_SERVER", ""))
         algo = normalize_algo(algo)
         if not is_supported(algo):
             raise UnsupportedAlgorithmError(algo)
@@ -337,7 +337,6 @@ _CHUNK_SIZE = 64 * 1024
 
 def fetch(
     fetcher: Fetcher,
-    servers: list[str],
     algo: str,
     hash: str,
     source_urls: list[str],
@@ -347,7 +346,7 @@ def fetch(
 
     Raises AllSourcesFailedError or PartialWriteError on failure.
     """
-    session = FetchSession(servers, algo, hash, source_urls)
+    session = FetchSession(algo, hash, source_urls)
     last_error: Exception | None = None
 
     while attempt := session.next_attempt():
@@ -379,7 +378,6 @@ def fetch(
 
 async def async_fetch(
     fetcher: AsyncFetcher,
-    servers: list[str],
     algo: str,
     hash: str,
     source_urls: list[str],
@@ -389,7 +387,7 @@ async def async_fetch(
 
     Raises AllSourcesFailedError or PartialWriteError on failure.
     """
-    session = FetchSession(servers, algo, hash, source_urls)
+    session = FetchSession(algo, hash, source_urls)
     last_error: Exception | None = None
 
     while attempt := session.next_attempt():

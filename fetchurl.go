@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"strings"
 
 	"github.com/lucasew/fetchurl/internal/errutil"
@@ -50,10 +51,26 @@ type FetchOptions struct {
 	Out  io.Writer
 }
 
-func NewFetcher(client *http.Client, servers []string) *Fetcher {
+func NewFetcher(client *http.Client) *Fetcher {
 	if client == nil {
 		client = http.DefaultClient
 	}
+
+	var servers []string
+	envServer := os.Getenv("FETCHURL_SERVER")
+	if envServer != "" {
+		list, err := sfv.DecodeList([]string{envServer})
+		if err != nil {
+			errutil.LogMsg(err, "Failed to parse FETCHURL_SERVER")
+		} else {
+			for _, item := range list {
+				if s, ok := item.Value.(string); ok {
+					servers = append(servers, s)
+				}
+			}
+		}
+	}
+
 	return &Fetcher{
 		Client:  client,
 		Servers: servers,

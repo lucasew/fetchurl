@@ -1,4 +1,4 @@
-import { describe, it } from 'node:test';
+import { describe, it, before, after } from 'node:test';
 import { createServer } from 'node:http';
 import assert from 'node:assert/strict';
 import {
@@ -32,6 +32,18 @@ function startServer(handler) {
 
 async function sha256hex(data) {
   return hashData('sha256', data);
+}
+
+// Helper to run with env var
+async function withEnv(val, fn) {
+  const old = process.env.FETCHURL_SERVER;
+  process.env.FETCHURL_SERVER = val;
+  try {
+    await fn();
+  } finally {
+    if (old === undefined) delete process.env.FETCHURL_SERVER;
+    else process.env.FETCHURL_SERVER = old;
+  }
 }
 
 // --- Unit tests ---
@@ -124,54 +136,57 @@ describe('FetchSession', () => {
 
   it('orders servers before sources', async () => {
     const hash = await sha256hex(new TextEncoder().encode('test'));
-    const session = new FetchSession({
-      servers: ['http://cache1', 'http://cache2'],
-      algo: 'sha256',
-      hash,
-      sourceUrls: ['http://src1'],
+    await withEnv('"http://cache1", "http://cache2"', async () => {
+      const session = new FetchSession({
+        algo: 'sha256',
+        hash,
+        sourceUrls: ['http://src1'],
+      });
+
+      const a1 = session.nextAttempt();
+      assert.ok(a1.url.startsWith('http://cache1/api/fetchurl/sha256/'));
+      assert.ok(a1.headers['X-Source-Urls']);
+
+      const a2 = session.nextAttempt();
+      assert.ok(a2.url.startsWith('http://cache2/api/fetchurl/sha256/'));
+
+      const a3 = session.nextAttempt();
+      assert.equal(a3.url, 'http://src1');
+      assert.deepEqual(a3.headers, {});
+
+      assert.equal(session.nextAttempt(), null);
+      assert.ok(!session.succeeded());
     });
-
-    const a1 = session.nextAttempt();
-    assert.ok(a1.url.startsWith('http://cache1/api/fetchurl/sha256/'));
-    assert.ok(a1.headers['X-Source-Urls']);
-
-    const a2 = session.nextAttempt();
-    assert.ok(a2.url.startsWith('http://cache2/api/fetchurl/sha256/'));
-
-    const a3 = session.nextAttempt();
-    assert.equal(a3.url, 'http://src1');
-    assert.deepEqual(a3.headers, {});
-
-    assert.equal(session.nextAttempt(), null);
-    assert.ok(!session.succeeded());
   });
 
   it('stops after reportSuccess', async () => {
     const hash = await sha256hex(new TextEncoder().encode('test'));
-    const session = new FetchSession({
-      servers: ['http://cache'],
-      algo: 'sha256',
-      hash,
-      sourceUrls: ['http://src'],
+    await withEnv('"http://cache"', async () => {
+      const session = new FetchSession({
+        algo: 'sha256',
+        hash,
+        sourceUrls: ['http://src'],
+      });
+      session.nextAttempt();
+      session.reportSuccess();
+      assert.ok(session.succeeded());
+      assert.equal(session.nextAttempt(), null);
     });
-    session.nextAttempt();
-    session.reportSuccess();
-    assert.ok(session.succeeded());
-    assert.equal(session.nextAttempt(), null);
   });
 
   it('stops after reportPartial', async () => {
     const hash = await sha256hex(new TextEncoder().encode('test'));
-    const session = new FetchSession({
-      servers: ['http://cache'],
-      algo: 'sha256',
-      hash,
-      sourceUrls: ['http://src'],
+    await withEnv('"http://cache"', async () => {
+      const session = new FetchSession({
+        algo: 'sha256',
+        hash,
+        sourceUrls: ['http://src'],
+      });
+      session.nextAttempt();
+      session.reportPartial();
+      assert.ok(!session.succeeded());
+      assert.equal(session.nextAttempt(), null);
     });
-    session.nextAttempt();
-    session.reportPartial();
-    assert.ok(!session.succeeded());
-    assert.equal(session.nextAttempt(), null);
   });
 });
 
@@ -187,14 +202,16 @@ describe('fetchurl()', () => {
       res.end(content);
     });
     try {
-      const data = await fetchurl({
-        fetch,
-        servers: [],
-        algo: 'sha256',
-        hash,
-        sourceUrls: [srv.url],
+      // Ensure no servers configured
+      await withEnv('', async () => {
+        const data = await fetchurl({
+          fetch,
+          algo: 'sha256',
+          hash,
+          sourceUrls: [srv.url],
+        });
+        assert.deepEqual(data, content);
       });
-      assert.deepEqual(data, content);
     } finally {
       srv.close();
     }
@@ -209,17 +226,18 @@ describe('fetchurl()', () => {
       res.end(content);
     });
     try {
-      await assert.rejects(
-        () =>
-          fetchurl({
-            fetch,
-            servers: [],
-            algo: 'sha256',
-            hash,
-            sourceUrls: [srv.url],
-          }),
-        PartialWriteError,
-      );
+      await withEnv('', async () => {
+        await assert.rejects(
+          () =>
+            fetchurl({
+              fetch,
+              algo: 'sha256',
+              hash,
+              sourceUrls: [srv.url],
+            }),
+          PartialWriteError,
+        );
+      });
     } finally {
       srv.close();
     }
@@ -233,17 +251,18 @@ describe('fetchurl()', () => {
       res.end();
     });
     try {
-      await assert.rejects(
-        () =>
-          fetchurl({
-            fetch,
-            servers: [],
-            algo: 'sha256',
-            hash,
-            sourceUrls: [srv.url],
-          }),
-        AllSourcesFailedError,
-      );
+      await withEnv('', async () => {
+        await assert.rejects(
+          () =>
+            fetchurl({
+              fetch,
+              algo: 'sha256',
+              hash,
+              sourceUrls: [srv.url],
+            }),
+          AllSourcesFailedError,
+        );
+      });
     } finally {
       srv.close();
     }
@@ -262,14 +281,15 @@ describe('fetchurl()', () => {
       res.end(content);
     });
     try {
-      const data = await fetchurl({
-        fetch,
-        servers: [bad.url],
-        algo: 'sha256',
-        hash,
-        sourceUrls: [good.url],
+      await withEnv(`"${bad.url}"`, async () => {
+        const data = await fetchurl({
+          fetch,
+          algo: 'sha256',
+          hash,
+          sourceUrls: [good.url],
+        });
+        assert.deepEqual(data, content);
       });
-      assert.deepEqual(data, content);
     } finally {
       bad.close();
       good.close();
