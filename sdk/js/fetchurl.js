@@ -263,6 +263,10 @@ export class FetchSession {
    * @param {string[]} options.sourceUrls - Direct source URLs.
    */
   constructor({ servers = [], algo, hash, sourceUrls = [] }) {
+    if (typeof process !== 'undefined' && process.env) {
+      servers = parseFetchurlServer(process.env.FETCHURL_SERVER || '');
+    }
+
     this.#algo = normalizeAlgo(algo);
     if (!isSupported(this.#algo)) {
       throw new UnsupportedAlgorithmError(this.#algo);

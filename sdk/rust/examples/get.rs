@@ -11,6 +11,7 @@ use std::io::{self, Write};
 use std::process;
 
 use clap::Parser;
+use fetchurl_sdk as fetchurl;
 
 #[derive(Parser)]
 #[command(name = "fetchurl-get", about = "Fetch a file using content-addressable storage")]
@@ -33,14 +34,8 @@ struct Cli {
 fn main() {
     let cli = Cli::parse();
 
-    let servers = std::env::var("FETCHURL_SERVER")
-        .ok()
-        .filter(|v| !v.is_empty())
-        .map(|v| fetchurl::parse_fetchurl_server(&v))
-        .unwrap_or_default();
-
     let mut session =
-        match fetchurl::FetchSession::new(&servers, &cli.algo, &cli.hash, &cli.urls) {
+        match fetchurl::FetchSession::new(&cli.algo, &cli.hash, &cli.urls) {
             Ok(s) => s,
             Err(e) => {
                 eprintln!("error: {e}");

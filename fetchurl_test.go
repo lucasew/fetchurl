@@ -28,7 +28,7 @@ func TestFetcher(t *testing.T) {
 		}))
 		defer ts.Close()
 
-		f := NewFetcher(nil, nil)
+		f := NewFetcher(nil)
 		var out bytes.Buffer
 		err := f.Fetch(t.Context(), FetchOptions{
 			Algo: "sha256",
@@ -50,7 +50,7 @@ func TestFetcher(t *testing.T) {
 		}))
 		defer ts.Close()
 
-		f := NewFetcher(nil, nil)
+		f := NewFetcher(nil)
 		var out bytes.Buffer
 		err := f.Fetch(t.Context(), FetchOptions{
 			Algo: "sha256",
@@ -103,7 +103,8 @@ func TestFetcher(t *testing.T) {
 		}))
 		defer server.Close()
 
-		f := NewFetcher(nil, []string{server.URL})
+		t.Setenv("FETCHURL_SERVER", fmt.Sprintf("\"%s\"", server.URL))
+		f := NewFetcher(nil)
 		var out bytes.Buffer
 		err := f.Fetch(t.Context(), FetchOptions{
 			Algo: "sha256",
@@ -130,7 +131,8 @@ func TestFetcher(t *testing.T) {
 		}))
 		defer server.Close()
 
-		f := NewFetcher(nil, []string{server.URL})
+		t.Setenv("FETCHURL_SERVER", fmt.Sprintf("\"%s\"", server.URL))
+		f := NewFetcher(nil)
 		var out bytes.Buffer
 		err := f.Fetch(t.Context(), FetchOptions{
 			Algo: "sha256",
@@ -157,7 +159,8 @@ func TestFetcher(t *testing.T) {
 		}))
 		defer server.Close()
 
-		f := NewFetcher(nil, []string{server.URL})
+		t.Setenv("FETCHURL_SERVER", fmt.Sprintf("\"%s\"", server.URL))
+		f := NewFetcher(nil)
 		var out bytes.Buffer
 		err := f.Fetch(t.Context(), FetchOptions{
 			Algo: "sha256",
@@ -179,7 +182,7 @@ func TestFetcher(t *testing.T) {
 	})
 
 	t.Run("Unsupported Algorithm", func(t *testing.T) {
-		f := NewFetcher(nil, nil)
+		f := NewFetcher(nil)
 		var out bytes.Buffer
 		err := f.Fetch(t.Context(), FetchOptions{
 			Algo: "md4",
@@ -198,7 +201,8 @@ func TestFetcher(t *testing.T) {
 		}))
 		defer server.Close()
 
-		f := NewFetcher(nil, nil)
+		t.Setenv("FETCHURL_SERVER", fmt.Sprintf("\"%s\"", server.URL))
+		f := NewFetcher(nil)
 		var out bytes.Buffer
 		err := f.Fetch(t.Context(), FetchOptions{
 			Algo: "sha256",
@@ -217,7 +221,8 @@ func TestFetcher(t *testing.T) {
 		}))
 		defer server.Close()
 
-		f := NewFetcher(nil, nil)
+		t.Setenv("FETCHURL_SERVER", fmt.Sprintf("\"%s\"", server.URL))
+		f := NewFetcher(nil)
 		var out bytes.Buffer
 		err := f.Fetch(t.Context(), FetchOptions{
 			Algo: "sha256",

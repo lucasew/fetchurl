@@ -10,7 +10,6 @@ import (
 	"github.com/lucasew/fetchurl"
 	"github.com/lucasew/fetchurl/internal/errutil"
 	"github.com/schollz/progressbar/v3"
-	"github.com/shogo82148/go-sfv"
 	"github.com/spf13/cobra"
 )
 
@@ -32,25 +31,9 @@ var getCmd = &cobra.Command{
 			os.Exit(1)
 		}
 
-		// Parse FETCHURL_SERVER
-		var servers []string
-		envServer := os.Getenv("FETCHURL_SERVER")
-		if envServer != "" {
-			list, err := sfv.DecodeList([]string{envServer})
-			if err != nil {
-				errutil.LogMsg(err, "Failed to parse FETCHURL_SERVER")
-			} else {
-				for _, item := range list {
-					if s, ok := item.Value.(string); ok {
-						servers = append(servers, s)
-					}
-				}
-			}
-		}
-
 		client := http.DefaultClient
 
-		f := fetchurl.NewFetcher(client, servers)
+		f := fetchurl.NewFetcher(client)
 
 		var out io.Writer
 		if output != "" {
